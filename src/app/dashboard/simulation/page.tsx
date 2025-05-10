@@ -12,14 +12,15 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from '@/hooks/use-toast';
+import { Slider } from "@/components/ui/slider";
 
 // Mock devices for simulation - assume these are linked from the main devices page
 const mockSimDevices: Device[] = [
-  { id: "sim-light-1", name: "Living Room Main Light", type: "light", status: "Off", room: "Living Room", icon: Lightbulb, dataAiHint: "ceiling light", brightness: 80, connectionDetails: "" },
-  { id: "sim-thermo-1", name: "Living Room Thermostat", type: "thermostat", status: "20°C", room: "Living Room", icon: Thermometer, dataAiHint: "smart thermostat", connectionDetails: "" },
-  { id: "sim-speaker-1", name: "Kitchen Speaker", type: "speaker", status: "Paused", room: "Kitchen", icon: Speaker, dataAiHint: "kitchen speaker", volume: 30, connectionDetails: "" },
-  { id: "sim-blinds-1", name: "Bedroom Blinds", type: "blinds", status: "Closed", room: "Bedroom", icon: LayoutPanelLeft, dataAiHint: "bedroom blinds", connectionDetails: "" },
-  { id: "sim-unassigned-1", name: "New Sensor", type: "sensor", status: "Waiting", room: "Unassigned", icon: Zap, dataAiHint: "iot sensor", connectionDetails: "" }
+  { id: "sim-light-1", name: "Living Room Main Light", type: "light", status: "Off", room: "Living Room", Icon: Lightbulb, dataAiHint: "ceiling light", brightness: 80, connectionDetails: "" },
+  { id: "sim-thermo-1", name: "Living Room Thermostat", type: "thermostat", status: "20°C", room: "Living Room", Icon: Thermometer, dataAiHint: "smart thermostat", connectionDetails: "" },
+  { id: "sim-speaker-1", name: "Kitchen Speaker", type: "speaker", status: "Paused", room: "Kitchen", Icon: Speaker, dataAiHint: "kitchen speaker", volume: 30, connectionDetails: "" },
+  { id: "sim-blinds-1", name: "Bedroom Blinds", type: "blinds", status: "Closed", room: "Bedroom", Icon: LayoutPanelLeft, dataAiHint: "bedroom blinds", connectionDetails: "" },
+  { id: "sim-unassigned-1", name: "New Sensor", type: "sensor", status: "Waiting", room: "Unassigned", Icon: Zap, dataAiHint: "iot sensor", connectionDetails: "" }
 ];
 
 const initialMockRooms = ["Living Room", "Bedroom", "Kitchen", "Office", "Unassigned"];
@@ -38,7 +39,7 @@ interface FloorPlanRoom {
 interface FloorPlanDevice {
   id: string; // Corresponds to Device.id
   name: string;
-  icon: React.ElementType;
+  Icon: React.ElementType;
   x: number; // Relative to floor plan container
   y: number;
 }
@@ -56,9 +57,9 @@ export default function SimulationPage() {
     { id: "fp-br", name: "Bedroom", x: 10, y: 40, width: 25, height: 20, devices: ["sim-blinds-1"]},
   ]);
   const [floorPlanDevices, setFloorPlanDevices] = useState<FloorPlanDevice[]>([
-    {id: "sim-light-1", name: "LR Light", icon: Lightbulb, x: 15, y: 15},
-    {id: "sim-thermo-1", name: "LR Thermo", icon: Thermometer, x: 20, y: 20},
-    {id: "sim-speaker-1", name: "Kitchen Spk", icon: Speaker, x: 50, y: 15},
+    {id: "sim-light-1", name: "LR Light", Icon: Lightbulb, x: 15, y: 15},
+    {id: "sim-thermo-1", name: "LR Thermo", Icon: Thermometer, x: 20, y: 20},
+    {id: "sim-speaker-1", name: "Kitchen Spk", Icon: Speaker, x: 50, y: 15},
   ]);
   const [isAddRoomModalOpen, setIsAddRoomModalOpen] = useState(false);
   const [newRoomName, setNewRoomName] = useState("");
@@ -107,7 +108,7 @@ export default function SimulationPage() {
     const newFPDevice: FloorPlanDevice = {
         id: device.id,
         name: device.name,
-        icon: device.icon,
+        Icon: device.Icon,
         x: Math.random() * 70 + 5, // Random position for demo
         y: Math.random() * 70 + 5,
     };
@@ -118,25 +119,47 @@ export default function SimulationPage() {
   };
   
   const handleDeviceControlChange = (deviceId: string, controlType: "brightness" | "volume" | "status", value: any) => {
+    // This function primarily affects the mockSimDevices if it were stateful.
+    // For the visual floor plan, the state updates are handled in handleDeviceSimulationControl or similar.
+    // Here, we'll just log and toast for the main device list part of the page.
+    const device = mockSimDevices.find(d => d.id === deviceId);
+    if(device) {
+        // In a real app, you would update a state variable for mockSimDevices here.
+        // For now, this is a conceptual update for DeviceCard interactions in the list below the floor plan.
+        let statusMessage = `${device.name} ${controlType} set to ${value}`;
+        if (controlType === "status") {
+            statusMessage = `${device.name} turned ${value ? "On" : "Off"}`;
+        }
+        toast({ title: "Device Control (List Demo)", description: statusMessage });
+    }
+  };
+
+
+   const handleDeviceSimulationControl = (deviceId: string, controlType: "brightness" | "volume" | "status", value: any) => {
     const deviceIndex = mockSimDevices.findIndex(d => d.id === deviceId);
     if (deviceIndex !== -1) {
         const updatedDevices = [...mockSimDevices];
         const deviceToUpdate = { ...updatedDevices[deviceIndex] };
         if (controlType === "brightness") deviceToUpdate.brightness = value;
         if (controlType === "volume") deviceToUpdate.volume = value;
-        if (controlType === "status") deviceToUpdate.status = value;
+        if (controlType === "status") deviceToUpdate.status = value ? "On" : "Off"; // Assuming boolean for status toggle
         // Note: This mockSimDevices update won't persist. In a real app, this would be handled by a central state or backend.
         console.log(`Sim: ${deviceId} ${controlType} changed to ${value}. (Local state only for demo)`);
         toast({ title: "Device Control (Sim Demo)", description: `${deviceToUpdate.name} ${controlType} set to ${value}`});
+
+       setFloorPlanDevices(prev => prev.map(d => d.id === deviceId ? { ...d, name: deviceToUpdate.name, Icon: deviceToUpdate.Icon } : d));
+        setFloorPlanRooms(prev => prev.map(r => r.id === deviceId ? { ...r, name: deviceToUpdate.name } : r));
     }
   };
+
+
 
 
   return (
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold">House & Wake-Up Simulation</h1>
+          <h1 className="text-3xl font-bold">House &amp; Wake-Up Simulation</h1>
           <p className="text-muted-foreground">
             Visualize your home, manage rooms, place devices, and test wake-up scenarios.
           </p>
@@ -201,7 +224,7 @@ export default function SimulationPage() {
                 </div>
             ))}
              {floorPlanDevices.map(device => {
-                const DeviceIcon = device.icon || Palette;
+                const DeviceIconComponent = device.Icon || Palette;
                 return (
                     <div key={device.id}
                         className="absolute flex flex-col items-center justify-center text-center cursor-grab p-1 bg-accent/30 border border-accent rounded-md shadow-sm"
@@ -209,14 +232,14 @@ export default function SimulationPage() {
                          title={device.name}
                         //  onClick={() => editMode && toast({title:"Device Selected (Demo)", description: `${device.name}`})} // Placeholder for selection
                     >
-                        <DeviceIcon className="h-4 w-4 text-accent-foreground"/>
+                        <DeviceIconComponent className="h-4 w-4 text-accent-foreground"/>
                         <span className="text-[10px] text-accent-foreground truncate max-w-[50px]">{device.name.split(" ")[0]}</span>
                         {editMode && <Button variant="ghost" size="icon" className="absolute -top-1 -right-1 h-4 w-4 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-0.5" onClick={(e) => { e.stopPropagation(); setFloorPlanDevices(prev => prev.filter(d => d.id !== device.id)); toast({title:"Device Removed from Plan", description: `${device.name} removed.`})}}><Trash2 className="h-2 w-2"/></Button>}
                     </div>
                 );
             })}
             {editMode && (
-                <p className="absolute bottom-2 left-2 text-xs text-muted-foreground bg-background/80 p-1 rounded">Edit Mode: Drag & drop, resize (not implemented). Add/remove elements.</p>
+                <p className="absolute bottom-2 left-2 text-xs text-muted-foreground bg-background/80 p-1 rounded">Edit Mode: Drag &amp; drop, resize (not implemented). Add/remove elements.</p>
             )}
           </div>
         </CardContent>
@@ -280,9 +303,11 @@ export default function SimulationPage() {
                             {devicesForSelectedRoom.map(device => (
                                 <DeviceCard 
                                     key={device.id}
-                                    {...device}
+                                    {...device} // This spreads all properties from device object
                                     onBrightnessChange={(value) => handleDeviceControlChange(device.id, "brightness", value)}
                                     onVolumeChange={(value) => handleDeviceControlChange(device.id, "volume", value)}
+                                      onSimulationBrightnessChange={(value) => handleDeviceSimulationControl(device.id, "brightness", value)}
+                                        onSimulationVolumeChange={(value) => handleDeviceSimulationControl(device.id, "volume", value)}
                                     onToggle={(isOn) => handleDeviceControlChange(device.id, "status", isOn ? "On" : "Off")}
                                     onColorChange={() => toast({title:"Change Color (Sim Demo)"})}
                                 />
@@ -314,3 +339,4 @@ export default function SimulationPage() {
     </div>
   );
 }
+
