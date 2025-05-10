@@ -1,10 +1,13 @@
+
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-
+import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -19,9 +22,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { PublicHeader } from "@/components/layout/PublicHeader";
 import { Footer } from "@/components/layout/Footer";
 import { Logo } from "@/components/shared/Logo";
+import { useToast } from "@/hooks/use-toast";
+import { Loader2 } from "lucide-react";
+import React from "react";
 
 const formSchema = z.object({
-  name: z.string().min(2, { message: "Name must be at least 2 characters." }).optional().or(z.literal('')), // Made name optional
+  name: z.string().min(2, { message: "Name must be at least 2 characters." }).optional().or(z.literal('')),
   email: z.string().email({ message: "Invalid email address." }),
   password: z.string().min(8, { message: "Password must be at least 8 characters." }),
   confirmPassword: z.string(),
@@ -31,6 +37,10 @@ const formSchema = z.object({
 });
 
 export default function SignupPage() {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [isLoading, setIsLoading] = React.useState(false);
+
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -41,12 +51,27 @@ export default function SignupPage() {
     },
   });
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
-    // TODO: Implement signup logic
-    console.log(values);
-    // For now, redirect to dashboard
-    if (typeof window !== 'undefined') {
-      window.location.href = '/dashboard';
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    setIsLoading(true);
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
+      if (userCredential.user && values.name) {
+        await updateProfile(userCredential.user, { displayName: values.name });
+      }
+      toast({
+        title: "Account Created",
+        description: "Welcome to WakeSync! Redirecting to your dashboard...",
+      });
+      router.push("/dashboard");
+    } catch (error: any) {
+      console.error("Signup error:", error);
+      toast({
+        title: "Signup Failed",
+        description: error.message || "Could not create account. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
     }
   }
 
@@ -72,7 +97,7 @@ export default function SignupPage() {
                     <FormItem>
                       <FormLabel>Full Name (Optional)</FormLabel>
                       <FormControl>
-                        <Input placeholder="John Doe" {...field} />
+                        <Input placeholder="John Doe" {...field} disabled={isLoading} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -85,7 +110,7 @@ export default function SignupPage() {
                     <FormItem>
                       <FormLabel>Email Address</FormLabel>
                       <FormControl>
-                        <Input type="email" placeholder="you@example.com" {...field} />
+                        <Input type="email" placeholder="you@example.com" {...field} disabled={isLoading} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -98,7 +123,7 @@ export default function SignupPage() {
                     <FormItem>
                       <FormLabel>Password</FormLabel>
                       <FormControl>
-                        <Input type="password" placeholder="••••••••" {...field} />
+                        <Input type="password" placeholder="••••••••" {...field} disabled={isLoading} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -111,13 +136,14 @@ export default function SignupPage() {
                     <FormItem>
                       <FormLabel>Confirm Password</FormLabel>
                       <FormControl>
-                        <Input type="password" placeholder="••••••••" {...field} />
+                        <Input type="password" placeholder="••••••••" {...field} disabled={isLoading} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-                <Button type="submit" className="w-full mt-6">
+                <Button type="submit" className="w-full mt-6" disabled={isLoading}>
+                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Create Account
                 </Button>
               </form>

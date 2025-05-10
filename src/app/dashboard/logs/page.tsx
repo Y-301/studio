@@ -1,3 +1,4 @@
+
 "use client";
 import React, { useState, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { FileText, Activity, AlertTriangle, Info, CheckCircle, Download, RefreshCw, Search, Filter, ArrowDownUp } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 // Mock log data
 const activityLogsData = [
@@ -32,6 +34,15 @@ const logLevels = ["ALL", "INFO", "WARN", "ERROR", "SUCCESS"] as const;
 const logSourcesActivity = ["ALL", "Routine Engine", "Simulation Service", "Device Manager", "Auth Service"] as const;
 const logSourcesSystem = ["ALL", "System Health", "AI Service", "Device Manager", "Update Service", "API Gateway", "System Core"] as const;
 
+type LogEntry = {
+    timestamp: string;
+    source: string;
+    event?: string; // For activity logs
+    details?: string; // For activity logs
+    level?: typeof logLevels[number] | "INFO" | "WARN" | "ERROR" | "SUCCESS"; // For system logs, allow specific strings
+    message?: string; // For system logs
+};
+
 
 export default function LogsPage() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -39,21 +50,23 @@ export default function LogsPage() {
   const [filterSource, setFilterSource] = useState<string>("ALL");
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [currentTab, setCurrentTab] = useState<"activity" | "system">("activity");
+  const { toast } = useToast();
 
-  const getIconForLevel = (level: string) => {
+  const getIconForLevel = (level?: string) => {
     if (level === "WARN") return <AlertTriangle className="h-5 w-5 text-amber-500" />;
-    if (level === "ERROR") return <AlertTriangle className="h-5 w-5 text-red-500" />; // Changed to AlertTriangle for errors too
+    if (level === "ERROR") return <AlertTriangle className="h-5 w-5 text-red-500" />;
     if (level === "SUCCESS") return <CheckCircle className="h-5 w-5 text-green-500" />;
     return <Info className="h-5 w-5 text-blue-500" />;
   };
 
   const filteredAndSortedLogs = useMemo(() => {
-    const logsToFilter = currentTab === 'activity' ? activityLogsData : systemLogsData;
+    const logsToFilter: LogEntry[] = currentTab === 'activity' ? activityLogsData : systemLogsData;
     let filtered = logsToFilter.filter(log => {
+      const searchLower = searchTerm.toLowerCase();
       const matchesSearch = searchTerm === "" || 
-                            log.message?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                            log.event?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                            log.details?.toLowerCase().includes(searchTerm.toLowerCase());
+                            log.message?.toLowerCase().includes(searchLower) || 
+                            log.event?.toLowerCase().includes(searchLower) ||
+                            log.details?.toLowerCase().includes(searchLower);
       const matchesLevel = filterLevel === "ALL" || (log.level && log.level === filterLevel);
       const matchesSource = filterSource === "ALL" || log.source === filterSource;
       
@@ -120,8 +133,8 @@ export default function LogsPage() {
                     <SelectItem value="oldest">Oldest First</SelectItem>
                 </SelectContent>
             </Select>
-            <Button variant="outline" onClick={() => console.log("Refresh logs")}><RefreshCw className="mr-2 h-4 w-4"/>Refresh</Button>
-            <Button variant="outline" disabled><Download className="mr-2 h-4 w-4"/>Export (Soon)</Button>
+            <Button variant="outline" onClick={() => toast({title: "Logs Refreshed", description:"Log data has been reloaded (Demo)."})}><RefreshCw className="mr-2 h-4 w-4"/>Refresh</Button>
+            <Button variant="outline" disabled><Download className="mr-2 h-4 w-4"/>Export</Button>
         </CardContent>
       </Card>
 
@@ -131,7 +144,7 @@ export default function LogsPage() {
           <TabsTrigger value="system"><FileText className="mr-2 h-4 w-4 inline-block"/>System Logs</TabsTrigger>
         </TabsList>
 
-        <TabsContent value={currentTab}> {/* Use currentTab to ensure content re-renders on tab change */}
+        <TabsContent value={currentTab}>
           <Card>
             <CardHeader>
               <CardTitle>{currentTab === 'activity' ? 'User & Device Activity' : 'System Performance & Errors'}</CardTitle>
@@ -149,7 +162,7 @@ export default function LogsPage() {
                       <AccordionItem value={`log-${index}`} key={index} className="border-b last:border-b-0">
                         <AccordionTrigger className="hover:no-underline p-2 rounded-md hover:bg-muted/50 text-left">
                            <div className="flex items-start gap-3 w-full">
-                            {log.level ? getIconForLevel(log.level) : <Activity className="h-5 w-5 text-primary"/>}
+                            {currentTab === 'system' ? getIconForLevel(log.level) : <Activity className="h-5 w-5 text-primary"/>}
                             <div className="flex-1">
                                 <p className={`text-sm font-medium ${log.level === "ERROR" ? "text-red-600 dark:text-red-400" : (log.level === "WARN" ? "text-amber-600 dark:text-amber-400" : "text-foreground")}`}>
                                   {log.level && `[${log.level}] `}{log.event || log.message}

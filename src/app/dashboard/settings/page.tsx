@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -13,9 +14,15 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { UserCircle, Bell, ShieldCheck, CreditCard, SlidersHorizontal, Link as LinkIcon, AlertTriangle, Trash2 } from "lucide-react"; // Added LinkIcon, AlertTriangle, Trash2
+import { UserCircle, Bell, ShieldCheck, CreditCard, SlidersHorizontal, Link as LinkIcon, AlertTriangle, Trash2, Camera, LogOut } from "lucide-react"; // Added Camera
 import { useToast } from "@/hooks/use-toast";
-import React from "react";
+import React, { useState, useEffect } from "react";
+import { auth } from "@/lib/firebase";
+import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
+import { useRouter } // Added for logout redirect
+
+from 'next/navigation';
+
 
 const profileFormSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters."),
@@ -32,14 +39,43 @@ const preferencesFormSchema = z.object({
   defaultWakeUpSound: z.string().optional(),
 });
 
+const passwordFormSchema = z.object({
+    currentPassword: z.string().min(1, "Current password is required."),
+    newPassword: z.string().min(8, "New password must be at least 8 characters."),
+    confirmNewPassword: z.string(),
+}).refine(data => data.newPassword === data.confirmNewPassword, {
+    message: "New passwords don't match",
+    path: ["confirmNewPassword"],
+});
+
+
 export default function SettingsPage() {
   const { toast } = useToast();
+  const router = useRouter();
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [currentUserName, setCurrentUserName] = useState<string | null>(null);
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  const [currentUserAvatar, setCurrentUserAvatar] = useState<string | null>(null);
+
+
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (user) {
+      profileForm.setValue("name", user.displayName || "");
+      profileForm.setValue("email", user.email || "");
+      setCurrentUserName(user.displayName);
+      setCurrentUserEmail(user.email);
+      setCurrentUserAvatar(user.photoURL);
+      // Ideally, fetch timezone from user profile in DB if stored
+    }
+  }, []);
+
 
   const profileForm = useForm<z.infer<typeof profileFormSchema>>({
     resolver: zodResolver(profileFormSchema),
     defaultValues: {
-      name: "Demo User",
-      email: "user@example.com",
+      name: "", // Will be set from Firebase auth
+      email: "", // Will be set from Firebase auth
       timezone: "America/New_York",
     },
   });
@@ -55,10 +91,21 @@ export default function SettingsPage() {
       defaultWakeUpSound: "nature_sounds",
     },
   });
+  
+  const passwordForm = useForm<z.infer<typeof passwordFormSchema>>({
+    resolver: zodResolver(passwordFormSchema),
+    defaultValues: {
+        currentPassword: "",
+        newPassword: "",
+        confirmNewPassword: "",
+    },
+  });
+
 
   function onProfileSubmit(values: z.infer<typeof profileFormSchema>) {
+    // TODO: Implement actual profile update (e.g., to Firebase profile or your DB)
     console.log("Profile updated:", values);
-    toast({ title: "Profile Updated", description: "Your profile information has been saved." });
+    toast({ title: "Profile Updated (Demo)", description: "Your profile information has been 'saved'." });
   }
 
   function onPreferencesSubmit(values: z.infer<typeof preferencesFormSchema>) {
@@ -76,24 +123,67 @@ export default function SettingsPage() {
     }
   }
   
+  async function onPasswordSubmit(values: z.infer<typeof passwordFormSchema>) {
+    const user = auth.currentUser;
+    if (!user || !user.email) {
+        toast({ title: "Error", description: "User not found or email not available.", variant: "destructive" });
+        return;
+    }
+    try {
+        const credential = EmailAuthProvider.credential(user.email, values.currentPassword);
+        await reauthenticateWithCredential(user, credential);
+        await updatePassword(user, values.newPassword);
+        toast({ title: "Password Updated", description: "Your password has been changed successfully." });
+        passwordForm.reset();
+    } catch (error: any) {
+        console.error("Password change error:", error);
+        toast({ title: "Password Change Failed", description: error.message || "Please check your current password.", variant: "destructive" });
+    }
+  }
+
   React.useEffect(() => {
     const isDarkMode = localStorage.getItem('theme') === 'dark' || 
                        (!('theme' in localStorage) && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
     preferencesForm.setValue('darkMode', isDarkMode);
   }, [preferencesForm]);
 
-  const handleDeleteAccount = () => {
-    // TODO: Implement actual account deletion logic
-    console.log("Account deletion requested");
-    toast({
-        title: "Account Deletion Initiated",
-        description: "Your account deletion request has been processed. (This is a demo)",
-        variant: "destructive"
-    });
-     // For demo, redirect to signup
-     if (typeof window !== 'undefined') {
-        setTimeout(() => window.location.href = '/auth/signup', 2000);
-     }
+  const handleAvatarChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0]) {
+      const file = event.target.files[0];
+      setAvatarPreview(URL.createObjectURL(file));
+      // In a real app, you'd upload this file to storage and update user.photoURL
+      toast({ title: "Avatar Preview Updated", description: "To save, update your profile (actual upload not implemented in demo)." });
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    const user = auth.currentUser;
+    if (user) {
+        try {
+            // Note: Deleting a user is a sensitive operation. 
+            // In a real app, you'd re-authenticate first.
+            // await user.delete(); // This is the Firebase delete call
+            console.log("Account deletion requested for user:", user.uid);
+            toast({
+                title: "Account Deletion Initiated (Demo)",
+                description: "Your account would be deleted. Logging you out.",
+                variant: "destructive"
+            });
+             // For demo, sign out and redirect
+             await auth.signOut();
+             router.push('/auth/signup');
+
+        } catch (error: any) {
+            console.error("Delete account error:", error);
+            toast({
+                title: "Account Deletion Failed",
+                description: error.message || "Could not delete account.",
+                variant: "destructive"
+            });
+        }
+    } else {
+         toast({ title: "Error", description: "No user logged in.", variant: "destructive" });
+    }
   };
 
 
@@ -111,7 +201,7 @@ export default function SettingsPage() {
           <TabsTrigger value="profile"><UserCircle className="mr-2 h-4 w-4 inline-block" />Profile</TabsTrigger>
           <TabsTrigger value="preferences"><SlidersHorizontal className="mr-2 h-4 w-4 inline-block" />Preferences</TabsTrigger>
           <TabsTrigger value="notifications"><Bell className="mr-2 h-4 w-4 inline-block" />Notifications</TabsTrigger>
-          <TabsTrigger value="integrations"><LinkIcon className="mr-2 h-4 w-4 inline-block" />Integrations</TabsTrigger>
+          <TabsTrigger value="integrations" id="integrations"><LinkIcon className="mr-2 h-4 w-4 inline-block" />Integrations</TabsTrigger>
           <TabsTrigger value="security"><ShieldCheck className="mr-2 h-4 w-4 inline-block" />Security</TabsTrigger>
           <TabsTrigger value="billing" id="billing"><CreditCard className="mr-2 h-4 w-4 inline-block" />Billing</TabsTrigger>
         </TabsList>
@@ -127,10 +217,13 @@ export default function SettingsPage() {
                 <form onSubmit={profileForm.handleSubmit(onProfileSubmit)} className="space-y-6">
                   <div className="flex items-center space-x-4 mb-6">
                     <Avatar className="h-20 w-20">
-                       <AvatarImage src="https://picsum.photos/seed/avatar-settings/200/200" alt="User Avatar" data-ai-hint="person avatar" />
+                       <AvatarImage src={avatarPreview || currentUserAvatar || `https://picsum.photos/seed/${currentUserEmail || 'avatar-settings'}/200/200`} alt="User Avatar" data-ai-hint="person avatar" />
                       <AvatarFallback><UserCircle size={40}/></AvatarFallback>
                     </Avatar>
-                    <Button variant="outline" type="button">Change Avatar</Button>
+                    <Button variant="outline" type="button" onClick={() => document.getElementById('avatar-upload')?.click()}>
+                        <Camera className="mr-2 h-4 w-4" />Change Avatar
+                    </Button>
+                    <Input id="avatar-upload" type="file" className="hidden" accept="image/*" onChange={handleAvatarChange} />
                   </div>
                   <FormField
                     control={profileForm.control}
@@ -323,7 +416,7 @@ export default function SettingsPage() {
                       <p className="text-xs text-muted-foreground">Sync sleep, activity, and heart rate data.</p>
                     </div>
                   </div>
-                  <Button variant="outline">Connect</Button>
+                  <Button variant="outline" onClick={() => toast({title: "Connect Google Fit (Demo)", description:"Integration flow would start here."})}>Connect</Button>
                 </div>
               </Card>
               <Card className="p-4">
@@ -335,7 +428,7 @@ export default function SettingsPage() {
                         <p className="text-xs text-muted-foreground">Import health data from your Apple devices.</p>
                         </div>
                     </div>
-                    <Button variant="outline" disabled>Connect (Coming Soon)</Button>
+                    <Button variant="outline" onClick={() => toast({title: "Connect Apple Health (Demo)", description:"Integration flow would start here."})}>Connect (Demo)</Button>
                  </div>
               </Card>
                <Card className="p-4">
@@ -347,7 +440,7 @@ export default function SettingsPage() {
                         <p className="text-xs text-muted-foreground">Use your Spotify playlists for wake-up sounds.</p>
                         </div>
                     </div>
-                    <Button variant="outline">Connect</Button>
+                    <Button variant="outline" onClick={() => toast({title: "Connect Spotify (Demo)", description:"Integration flow would start here."})}>Connect</Button>
                  </div>
               </Card>
             </CardContent>
@@ -360,24 +453,49 @@ export default function SettingsPage() {
               <CardTitle>Security Settings</CardTitle>
               <CardDescription>Manage your account security.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="current-password">Current Password</Label>
-                <Input id="current-password" type="password" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="new-password">New Password</Label>
-                <Input id="new-password" type="password" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="confirm-password">Confirm New Password</Label>
-                <Input id="confirm-password" type="password" />
-              </div>
-              <Button>Change Password</Button>
+            <CardContent>
+              <Form {...passwordForm}>
+                <form onSubmit={passwordForm.handleSubmit(onPasswordSubmit)} className="space-y-4">
+                    <FormField
+                        control={passwordForm.control}
+                        name="currentPassword"
+                        render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Current Password</FormLabel>
+                            <FormControl><Input type="password" {...field} /></FormControl>
+                            <FormMessage />
+                        </FormItem>
+                        )}
+                    />
+                    <FormField
+                        control={passwordForm.control}
+                        name="newPassword"
+                        render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>New Password</FormLabel>
+                            <FormControl><Input type="password" {...field} /></FormControl>
+                            <FormMessage />
+                        </FormItem>
+                        )}
+                    />
+                    <FormField
+                        control={passwordForm.control}
+                        name="confirmNewPassword"
+                        render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Confirm New Password</FormLabel>
+                            <FormControl><Input type="password" {...field} /></FormControl>
+                            <FormMessage />
+                        </FormItem>
+                        )}
+                    />
+                    <Button type="submit">Change Password</Button>
+                </form>
+              </Form>
               <div className="mt-6 border-t pt-6">
                 <h3 className="text-lg font-medium">Two-Factor Authentication (2FA)</h3>
                 <p className="text-sm text-muted-foreground mb-2">Add an extra layer of security to your account.</p>
-                <Button variant="outline">Enable 2FA</Button>
+                <Button variant="outline" onClick={() => toast({title: "Enable 2FA (Demo)", description:"2FA setup flow would start here."})}>Enable 2FA (Demo)</Button>
               </div>
             </CardContent>
           </Card>
@@ -394,8 +512,8 @@ export default function SettingsPage() {
                     <h3 className="text-md font-medium">Current Plan: <span className="text-primary">Pro Monthly</span></h3>
                     <p className="text-sm text-muted-foreground">Renews on August 28, 2024. $9.99/month.</p>
                     <div className="flex gap-2 mt-2">
-                        <Button variant="outline">Change Plan</Button>
-                        <Button variant="link" className="text-destructive hover:text-destructive/80">Cancel Subscription</Button>
+                        <Button variant="outline" onClick={() => toast({title: "Change Plan (Demo)", description:"Plan selection would be shown here."})}>Change Plan</Button>
+                        <Button variant="link" className="text-destructive hover:text-destructive/80" onClick={() => toast({title: "Cancel Subscription (Demo)", description:"Subscription cancellation flow."})}>Cancel Subscription</Button>
                     </div>
                 </div>
                 <div className="border-t pt-6">
@@ -403,9 +521,9 @@ export default function SettingsPage() {
                     <div className="flex items-center gap-2 mt-2 p-3 border rounded-md bg-secondary/50">
                         <CreditCard className="h-6 w-6 text-muted-foreground"/>
                         <span>Visa ending in **** 1234</span>
-                        <Button variant="ghost" size="sm" className="ml-auto">Edit</Button>
+                        <Button variant="ghost" size="sm" className="ml-auto" onClick={() => toast({title: "Edit Payment (Demo)", description:"Payment method update form."})}>Edit</Button>
                     </div>
-                     <Button variant="outline" className="mt-2">Add New Payment Method</Button>
+                     <Button variant="outline" className="mt-2" onClick={() => toast({title: "Add Payment Method (Demo)", description:"Form to add new payment method."})}>Add New Payment Method</Button>
                 </div>
                  <div className="border-t pt-6">
                     <h3 className="text-md font-medium">Billing History</h3>
@@ -416,7 +534,6 @@ export default function SettingsPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Danger Zone */}
       <Card className="border-destructive">
         <CardHeader>
             <CardTitle className="text-destructive flex items-center gap-2"><AlertTriangle/>Danger Zone</CardTitle>
@@ -432,7 +549,7 @@ export default function SettingsPage() {
                     <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                     <AlertDialogDescription>
                         This action cannot be undone. This will permanently delete your account
-                        and remove all your data from our servers.
+                        and remove all your data from our servers (this is a demo).
                     </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

@@ -1,7 +1,8 @@
+
 "use client"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { BarChart3, TrendingUp, BedDouble, Coffee, Zap, ListChecks, MessageCircle, Lightbulb } from "lucide-react";
+import { BarChart3, TrendingUp, BedDouble, Coffee, Zap, ListChecks, MessageCircle, Lightbulb, Bell } from "lucide-react"; // Added Bell
 import { Bar, BarChart, Pie, PieChart, Cell, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from 'recharts';
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 
@@ -17,18 +18,33 @@ const energyData = [
 ];
 
 const deviceUsageData = [
-    { name: 'Smart Lights', hours: 120, fill: "var(--color-lights)" },
+    { name: 'Lights', hours: 120, fill: "var(--color-lights)" },
     { name: 'Thermostat', hours: 150, fill: "var(--color-thermostat)" },
-    { name: 'Smart Speaker', hours: 80, fill: "var(--color-speaker)" },
+    { name: 'Speaker', hours: 80, fill: "var(--color-speaker)" },
     { name: 'TV', hours: 95, fill: "var(--color-tv)" },
     { name: 'Blinds', hours: 30, fill: "var(--color-blinds)" },
 ];
 const routineFrequencyData = [
-    { name: 'Morning Energizer', executions: 30, fill: "var(--color-morning)"},
-    { name: 'Evening Wind-Down', executions: 28, fill: "var(--color-evening)"},
-    { name: 'Movie Night', executions: 12, fill: "var(--color-movie)"},
-    { name: 'Workout Mode', executions: 8, fill: "var(--color-workout)"},
+    { name: 'Morning', executions: 30, fill: "var(--color-morning)"},
+    { name: 'Evening', executions: 28, fill: "var(--color-evening)"},
+    { name: 'Movie', executions: 12, fill: "var(--color-movie)"},
+    { name: 'Workout', executions: 8, fill: "var(--color-workout)"},
 ];
+
+const energyConsumptionData = [
+    { category: 'Lighting', kwh: 25, fill: "var(--color-lights)" },
+    { category: 'HVAC', kwh: 60, fill: "var(--color-thermostat)" },
+    { category: 'Entertainment', kwh: 35, fill: "var(--color-tv)" },
+    { category: 'Appliances', kwh: 40, fill: "var(--color-speaker)" }, // Re-using speaker color for demo
+];
+
+const notificationSummaryData = [
+    { type: 'Routine Start', count: 45, fill: "var(--color-morning)" },
+    { type: 'Device Alert', count: 12, fill: "var(--color-evening)" },
+    { type: 'System Update', count: 5, fill: "var(--color-movie)" },
+    { type: 'Low Battery', count: 8, fill: "var(--color-workout)" },
+];
+
 
 const chartConfigSleep = { hours: { label: "Sleep Hours", color: "hsl(var(--chart-1))" }} satisfies ChartConfig;
 const chartConfigEnergy = { level: { label: "Energy Level", color: "hsl(var(--chart-2))" }} satisfies ChartConfig;
@@ -46,6 +62,22 @@ const chartConfigRoutineFreq = {
   evening: {label: "Evening", color: "hsl(var(--chart-2))"},
   movie: {label: "Movie", color: "hsl(var(--chart-3))"},
   workout: {label: "Workout", color: "hsl(var(--chart-4))"},
+} satisfies ChartConfig;
+
+const chartConfigEnergyConsumption = {
+    kwh: { label: "kWh" },
+    lights: { label: "Lighting", color: "hsl(var(--chart-1))" },
+    thermostat: { label: "HVAC", color: "hsl(var(--chart-2))" },
+    tv: { label: "Entertainment", color: "hsl(var(--chart-4))" },
+    speaker: { label: "Appliances", color: "hsl(var(--chart-3))" },
+} satisfies ChartConfig;
+
+const chartConfigNotificationSummary = {
+    count: { label: "Count" },
+    morning: { label: "Routine Start", color: "hsl(var(--chart-1))" },
+    evening: { label: "Device Alert", color: "hsl(var(--chart-2))" },
+    movie: { label: "System Update", color: "hsl(var(--chart-3))" },
+    workout: { label: "Low Battery", color: "hsl(var(--chart-4))" },
 } satisfies ChartConfig;
 
 
@@ -191,29 +223,51 @@ export default function AnalyticsPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
-        <Card>
+        <Card className="shadow-lg">
             <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Zap className="h-5 w-5 text-primary" />Estimated Energy Consumption</CardTitle>
-                <CardDescription>Overview of energy usage by smart devices. (Coming Soon)</CardDescription>
+                <CardDescription>Monthly overview of energy usage by smart device categories (kWh).</CardDescription>
             </CardHeader>
-            <CardContent className="text-center py-12">
-                <Lightbulb className="mx-auto h-12 w-12 text-muted-foreground" />
-                <p className="mt-4 text-muted-foreground">Detailed energy consumption analytics are under development.</p>
+            <CardContent>
+                 <ChartContainer config={chartConfigEnergyConsumption} className="h-[300px] w-full">
+                    <BarChart data={energyConsumptionData} margin={{ top: 5, right: 20, left: -20, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                        <XAxis dataKey="category" tickLine={false} axisLine={false} />
+                        <YAxis tickLine={false} axisLine={false} unit="kWh" />
+                        <Tooltip 
+                          cursor={{ fill: 'hsl(var(--muted))' }}
+                          content={<ChartTooltipContent />}
+                        />
+                        <Legend />
+                         <Bar dataKey="kwh" radius={4}>
+                            {energyConsumptionData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.fill} />
+                            ))}
+                        </Bar>
+                    </BarChart>
+                </ChartContainer>
             </CardContent>
         </Card>
-        <Card>
+        <Card className="shadow-lg">
             <CardHeader>
-                <CardTitle  className="flex items-center gap-2"><MessageCircle className="h-5 w-5 text-primary" />Notification Summary</CardTitle>
-                <CardDescription>Breakdown of notifications received and interacted with. (Coming Soon)</CardDescription>
+                <CardTitle  className="flex items-center gap-2"><Bell className="h-5 w-5 text-primary" />Notification Summary</CardTitle>
+                <CardDescription>Breakdown of notifications received this month by type.</CardDescription>
             </CardHeader>
-            <CardContent className="text-center py-12">
-                <Bell className="mx-auto h-12 w-12 text-muted-foreground" />
-                <p className="mt-4 text-muted-foreground">Notification analytics are under development.</p>
+            <CardContent className="flex justify-center">
+                 <ChartContainer config={chartConfigNotificationSummary} className="h-[300px] w-[300px]">
+                    <PieChart >
+                        <Tooltip content={<ChartTooltipContent hideLabel />} />
+                        <Pie data={notificationSummaryData} dataKey="count" nameKey="type" cx="50%" cy="50%" outerRadius={100} label>
+                             {notificationSummaryData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.fill} />
+                            ))}
+                        </Pie>
+                        <Legend/>
+                    </PieChart>
+                </ChartContainer>
             </CardContent>
         </Card>
       </div>
-
-
     </div>
   );
 }

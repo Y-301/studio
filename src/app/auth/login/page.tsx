@@ -1,10 +1,13 @@
+
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -19,6 +22,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { PublicHeader } from "@/components/layout/PublicHeader";
 import { Footer } from "@/components/layout/Footer";
 import { Logo } from "@/components/shared/Logo";
+import { useToast } from "@/hooks/use-toast";
+import { Loader2 } from "lucide-react";
+import React from "react";
 
 const formSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
@@ -26,6 +32,10 @@ const formSchema = z.object({
 });
 
 export default function LoginPage() {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [isLoading, setIsLoading] = React.useState(false);
+
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -34,12 +44,24 @@ export default function LoginPage() {
     },
   });
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
-    // TODO: Implement login logic
-    console.log(values);
-    // For now, redirect to dashboard
-    if (typeof window !== 'undefined') {
-      window.location.href = '/dashboard';
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    setIsLoading(true);
+    try {
+      await signInWithEmailAndPassword(auth, values.email, values.password);
+      toast({
+        title: "Login Successful",
+        description: "Redirecting to your dashboard...",
+      });
+      router.push("/dashboard");
+    } catch (error: any) {
+      console.error("Login error:", error);
+      toast({
+        title: "Login Failed",
+        description: error.message || "Invalid email or password. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
     }
   }
 
@@ -65,7 +87,7 @@ export default function LoginPage() {
                     <FormItem>
                       <FormLabel>Email Address</FormLabel>
                       <FormControl>
-                        <Input type="email" placeholder="you@example.com" {...field} />
+                        <Input type="email" placeholder="you@example.com" {...field} disabled={isLoading} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -78,7 +100,7 @@ export default function LoginPage() {
                     <FormItem>
                       <FormLabel>Password</FormLabel>
                       <FormControl>
-                        <Input type="password" placeholder="••••••••" {...field} />
+                        <Input type="password" placeholder="••••••••" {...field} disabled={isLoading} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -89,7 +111,8 @@ export default function LoginPage() {
                     Forgot your password?
                   </Link>
                 </div>
-                <Button type="submit" className="w-full">
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Sign In
                 </Button>
               </form>

@@ -1,10 +1,12 @@
+
 "use client";
 
 import Link from "next/link";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-
+import { sendPasswordResetEmail } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -20,6 +22,8 @@ import { PublicHeader } from "@/components/layout/PublicHeader";
 import { Footer } from "@/components/layout/Footer";
 import { Logo } from "@/components/shared/Logo";
 import { useToast } from "@/hooks/use-toast";
+import { Loader2 } from "lucide-react";
+import React from "react";
 
 const formSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
@@ -27,6 +31,8 @@ const formSchema = z.object({
 
 export default function ForgotPasswordPage() {
   const { toast } = useToast();
+  const [isLoading, setIsLoading] = React.useState(false);
+
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -34,14 +40,25 @@ export default function ForgotPasswordPage() {
     },
   });
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
-    // TODO: Implement password reset logic
-    console.log(values);
-    toast({
-      title: "Password Reset Requested",
-      description: `If an account exists for ${values.email}, a reset link has been sent.`,
-    });
-    form.reset();
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    setIsLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, values.email);
+      toast({
+        title: "Password Reset Email Sent",
+        description: `If an account exists for ${values.email}, a password reset link has been sent. Please check your inbox.`,
+      });
+      form.reset();
+    } catch (error: any) {
+      console.error("Password reset error:", error);
+      toast({
+        title: "Error Sending Reset Email",
+        description: error.message || "Could not send password reset email. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   return (
@@ -66,13 +83,14 @@ export default function ForgotPasswordPage() {
                     <FormItem>
                       <FormLabel>Email Address</FormLabel>
                       <FormControl>
-                        <Input type="email" placeholder="you@example.com" {...field} />
+                        <Input type="email" placeholder="you@example.com" {...field} disabled={isLoading}/>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-                <Button type="submit" className="w-full">
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Send Reset Link
                 </Button>
               </form>

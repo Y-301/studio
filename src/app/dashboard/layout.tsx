@@ -1,8 +1,11 @@
+
 'use client';
 
 import * as React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { onAuthStateChanged, signOut, User } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 import {
   SidebarProvider,
   Sidebar,
@@ -28,22 +31,19 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Bell, LogOut, Moon, Sun, UserCircle, CreditCard, Settings, Link as LinkIcon } from 'lucide-react'; 
+import { Bell, LogOut, Moon, Sun, UserCircle, CreditCard, Settings, Link as LinkIcon, Loader2 } from 'lucide-react'; 
 import { Logo } from '@/components/shared/Logo';
-import { dashboardNavItems, type NavItemGroup } from '@/config/dashboard-nav'; 
+import { dashboardNavItems } from '@/config/dashboard-nav'; 
 import { cn } from '@/lib/utils';
-import { Footer } from '@/components/layout/Footer'; // Import Footer
+import { Footer } from '@/components/layout/Footer';
+import { useToast } from '@/hooks/use-toast';
 
-// A simple theme toggle - for demonstration. 
-// In a real app, this would use context and persist theme.
 function ThemeToggle() {
   const [isDarkMode, setIsDarkMode] = React.useState(false);
   const [mounted, setMounted] = React.useState(false);
 
-
   React.useEffect(() => {
     setMounted(true);
-    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     const theme = localStorage.getItem('theme');
     if (theme === 'dark') {
       setIsDarkMode(true);
@@ -51,12 +51,15 @@ function ThemeToggle() {
     } else if (theme === 'light') {
       setIsDarkMode(false);
       document.documentElement.classList.remove('dark');
-    } else if (prefersDark) {
-      setIsDarkMode(true);
-      document.documentElement.classList.add('dark');
     } else {
-      setIsDarkMode(false);
-      document.documentElement.classList.remove('dark');
+      const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      if (prefersDark) {
+        setIsDarkMode(true);
+        document.documentElement.classList.add('dark');
+      } else {
+        setIsDarkMode(false);
+        document.documentElement.classList.remove('dark');
+      }
     }
   }, []);
 
@@ -74,7 +77,6 @@ function ThemeToggle() {
   
   if (!mounted) return <Button variant="ghost" size="icon" disabled className="h-5 w-5"></Button>;
 
-
   return (
     <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme">
       {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
@@ -85,6 +87,48 @@ function ThemeToggle() {
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { toast } = useToast();
+  const [currentUser, setCurrentUser] = React.useState<User | null>(null);
+  const [loadingAuth, setLoadingAuth] = React.useState(true);
+
+  React.useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setCurrentUser(user);
+      } else {
+        setCurrentUser(null);
+        router.push('/auth/login'); 
+      }
+      setLoadingAuth(false);
+    });
+    return () => unsubscribe();
+  }, [router]);
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      toast({ title: "Logged Out", description: "You have been successfully logged out." });
+      router.push('/auth/login');
+    } catch (error) {
+      console.error("Logout error:", error);
+      toast({ title: "Logout Failed", description: "Could not log out. Please try again.", variant: "destructive" });
+    }
+  };
+
+  if (loadingAuth) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
+  
+  if (!currentUser) {
+     // This should ideally not be reached if redirection in onAuthStateChanged works promptly
+    return null; // Or a specific "Access Denied" page
+  }
+
 
   return (
     <SidebarProvider defaultOpen>
@@ -122,7 +166,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {/* Placeholder for any footer items in sidebar */}
         </SidebarFooter>
       </Sidebar>
-      <SidebarInset className="flex flex-col min-h-screen"> {/* Ensure SidebarInset takes full height and is flex col */}
+      <SidebarInset className="flex flex-col min-h-screen">
         <header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6">
           <div className="md:hidden"> 
              <SidebarTrigger />
@@ -139,15 +183,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                   <Avatar className="h-8 w-8">
-                    <AvatarImage src="https://picsum.photos/seed/user-avatar/100/100" alt="User Avatar" data-ai-hint="person avatar" />
+                    <AvatarImage src={currentUser?.photoURL || `https://picsum.photos/seed/${currentUser?.uid || 'user-avatar'}/100/100`} alt="User Avatar" data-ai-hint="person avatar" />
                     <AvatarFallback>
-                      <UserCircle />
+                      {currentUser?.displayName ? currentUser.displayName.charAt(0).toUpperCase() : <UserCircle />}
                     </AvatarFallback>
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                <DropdownMenuLabel>{currentUser?.displayName || currentUser?.email || "My Account"}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
                   <Link href="/dashboard/settings" className="flex items-center w-full">
@@ -169,10 +213,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  onClick={() => {
-                    // TODO: Implement logout
-                    if (typeof window !== 'undefined') window.location.href = '/auth/login';
-                  }}
+                  onClick={handleLogout}
                   className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-700/20"
                 >
                   <LogOut className="mr-2 h-4 w-4" />
@@ -183,7 +224,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </header>
         <main className="flex-1 p-4 md:p-6 lg:p-8">{children}</main>
-        <Footer /> {/* Add Footer here to make it sticky within the main content area */}
+        <Footer />
       </SidebarInset>
     </SidebarProvider>
   );
