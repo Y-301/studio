@@ -41,13 +41,13 @@ export const dashboardNavItems: NavItemGroup[] = [
         title: 'Devices',
         href: '/dashboard/devices',
         icon: Smartphone,
-        disabled: true, // Example: disable for guests
+        disabled: false, 
       },
       {
         title: 'Routines',
         href: '/dashboard/routines',
         icon: ListChecks,
-        disabled: true, // Example: disable for guests
+        disabled: false, 
       },
       {
         title: 'Simulation',
@@ -58,7 +58,7 @@ export const dashboardNavItems: NavItemGroup[] = [
         title: 'Wristband',
         href: '/dashboard/wristband',
         icon: Watch,
-        disabled: true, // Example: disable for guests
+        disabled: false, 
       },
       {
         title: 'Analytics',
@@ -69,19 +69,19 @@ export const dashboardNavItems: NavItemGroup[] = [
         title: 'Logs',
         href: '/dashboard/logs',
         icon: FileText,
-        disabled: true, // Example: disable for guests
+        disabled: false, 
       },
       {
         title: 'Settings',
         href: '/dashboard/settings',
         icon: SettingsIcon,
-        disabled: true, // Settings page likely requires authentication
+        disabled: false, 
       },
        { 
         title: 'Integrations',
         href: '/dashboard/settings#integrations',
         icon: LinkIcon,
-        disabled: true, // Integrations likely require authentication
+        disabled: false, 
       },
     ],
   },
