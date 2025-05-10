@@ -2,7 +2,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { BarChart, ListChecks, Settings, Smartphone, Sunrise, Zap } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image";
 
 export default function DashboardPage() {
   const quickActions = [
@@ -69,7 +68,7 @@ export default function DashboardPage() {
               <span>Next Wake-up: <span className="font-semibold text-primary">Tomorrow, 6:30 AM</span></span>
               <Button variant="ghost" size="sm" asChild><Link href="/dashboard/simulation">Adjust</Link></Button>
             </div>
-             <Image src="https://picsum.photos/seed/status/600/300" alt="Home status overview" width={600} height={300} className="rounded-md mt-4" data-ai-hint="home dashboard" />
+             {/* Image removed */}
           </CardContent>
         </Card>
 

@@ -1,7 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Watch, Activity, BatteryFull, Wifi, LinkIcon } from "lucide-react";
-import Image from "next/image";
 
 export default function WristbandPage() {
   const wristbandConnected = true; // Mock status
@@ -15,14 +14,7 @@ export default function WristbandPage() {
             Connect and manage your WakeSync compatible wristband.
           </p>
         </div>
-        <Image 
-            src="https://picsum.photos/seed/wristbandpage/300/150" 
-            alt="Wristband"
-            width={300}
-            height={150}
-            className="rounded-lg shadow-md object-cover hidden md:block"
-            data-ai-hint="smart watch"
-        />
+        {/* Image removed */}
       </div>
 
       <Card className="shadow-lg">
@@ -57,14 +49,7 @@ export default function WristbandPage() {
                         <p className="text-lg">Bluetooth LE</p>
                     </Card>
                 </div>
-              <Image 
-                src="https://picsum.photos/seed/wristbandconnected/600/300" 
-                alt="Connected Wristband"
-                width={600}
-                height={300}
-                className="rounded-lg shadow-md object-cover mx-auto"
-                data-ai-hint="wearable technology"
-              />
+              {/* Image removed */}
               <div className="flex gap-4">
                 <Button>View Detailed Stats</Button>
                 <Button variant="outline">Sync Now</Button>

@@ -1,6 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ClipboardCheck } from "lucide-react";
-import Image from "next/image";
 
 export default function ModelEvaluationPage() {
   return (
@@ -22,14 +21,7 @@ export default function ModelEvaluationPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="text-center py-12">
-          <Image
-            src="https://picsum.photos/seed/modelevaluation/600/300"
-            alt="Model Evaluation Placeholder"
-            width={600}
-            height={300}
-            className="rounded-lg shadow-md object-cover mx-auto"
-            data-ai-hint="metrics dashboard"
-          />
+          {/* Image removed */}
           <p className="mt-4 text-muted-foreground">Model evaluation features are currently under development.</p>
         </CardContent>
       </Card>

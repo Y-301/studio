@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { UserCircle, Bell, ShieldCheck, Palette, CreditCard, SlidersHorizontal } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import React from "react";
 
 const profileFormSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters."),
@@ -111,7 +112,7 @@ export default function SettingsPage() {
                 <form onSubmit={profileForm.handleSubmit(onProfileSubmit)} className="space-y-6">
                   <div className="flex items-center space-x-4 mb-6">
                     <Avatar className="h-20 w-20">
-                      <AvatarImage src="https://picsum.photos/seed/avatar/200/200" alt="User Avatar" data-ai-hint="person avatar" />
+                      {/* <AvatarImage src="https://picsum.photos/seed/avatar/200/200" alt="User Avatar" data-ai-hint="person avatar" /> */}
                       <AvatarFallback><UserCircle size={40}/></AvatarFallback>
                     </Avatar>
                     <Button variant="outline" type="button">Change Avatar</Button>

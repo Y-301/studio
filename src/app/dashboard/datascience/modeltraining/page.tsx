@@ -1,6 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BrainCircuit } from "lucide-react";
-import Image from "next/image";
 
 export default function ModelTrainingPage() {
   return (
@@ -22,14 +21,7 @@ export default function ModelTrainingPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="text-center py-12">
-          <Image
-            src="https://picsum.photos/seed/modeltraining/600/300"
-            alt="Model Training Placeholder"
-            width={600}
-            height={300}
-            className="rounded-lg shadow-md object-cover mx-auto"
-            data-ai-hint="neural network"
-          />
+          {/* Image removed */}
           <p className="mt-4 text-muted-foreground">Model training features are currently under development.</p>
         </CardContent>
       </Card>

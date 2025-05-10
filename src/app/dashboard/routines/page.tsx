@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { PlusCircle, ListChecks, Sun, Moon, Zap } from "lucide-react";
 import Link from "next/link";
 import { RoutineSuggestionClient } from "@/components/routines/RoutineSuggestionClient";
-import Image from "next/image";
 
 // Mock routines data
 const routines = [
@@ -49,14 +48,7 @@ export default function RoutinesPage() {
                 <Card key={routine.id} className="flex items-center justify-between p-4 hover:shadow-md transition-shadow">
                   <div className="flex items-center gap-4">
                     <routine.icon className={`h-8 w-8 ${routine.active ? 'text-primary' : 'text-muted-foreground'}`} />
-                    <Image 
-                        src={`https://picsum.photos/seed/routine${routine.id}/100/100`}
-                        alt={routine.name}
-                        width={60}
-                        height={60}
-                        className="rounded-md object-cover aspect-square"
-                        data-ai-hint={routine.dataAiHint}
-                    />
+                    {/* Image removed */}
                     <div>
                       <h3 className="font-semibold">{routine.name}</h3>
                       <p className="text-sm text-muted-foreground">{routine.description}</p>

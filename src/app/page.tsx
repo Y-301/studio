@@ -3,7 +3,6 @@ import { Footer } from '@/components/layout/Footer';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { CheckCircle, Smartphone, Brain, Clock } from 'lucide-react';
-import Image from 'next/image';
 import Link from 'next/link';
 
 const features = [
@@ -11,22 +10,16 @@ const features = [
     icon: <Clock className="h-10 w-10 text-primary" />,
     title: 'Wake Up Simulation',
     description: 'Gently wake up with simulated sunrises and customizable soundscapes.',
-    img: "https://picsum.photos/seed/wakeup/400/300",
-    aiHint: "sunrise alarm"
   },
   {
     icon: <Smartphone className="h-10 w-10 text-primary" />,
     title: 'Smart Home Control',
     description: 'Seamlessly control all your IoT devices from a single, intuitive interface.',
-    img: "https://picsum.photos/seed/smarthome/400/300",
-    aiHint: "smart home"
   },
   {
     icon: <Brain className="h-10 w-10 text-primary" />,
     title: 'AI Routine Suggestions',
     description: 'Let our AI craft the perfect morning routine based on your schedule and preferences.',
-    img: "https://picsum.photos/seed/ai/400/300",
-    aiHint: "artificial intelligence"
   },
 ];
 
@@ -53,14 +46,7 @@ export default function HomePage() {
               </Button>
             </div>
              <div className="mt-16">
-                <Image 
-                    src="https://picsum.photos/seed/hero/1200/600" 
-                    alt="WakeSync Dashboard Preview" 
-                    width={1200} 
-                    height={600} 
-                    className="rounded-lg shadow-2xl mx-auto"
-                    data-ai-hint="dashboard interface"
-                />
+                {/* Image removed */}
             </div>
           </div>
         </section>
@@ -79,15 +65,8 @@ export default function HomePage() {
                     <CardTitle className="mt-4 text-2xl">{feature.title}</CardTitle>
                   </CardHeader>
                   <CardContent className="flex-grow text-center">
-                    <Image 
-                        src={feature.img}
-                        alt={feature.title}
-                        width={400}
-                        height={300}
-                        className="rounded-md mb-4 aspect-[4/3] object-cover"
-                        data-ai-hint={feature.aiHint}
-                    />
-                    <CardDescription className="text-base">{feature.description}</CardDescription>
+                    {/* Image removed */}
+                    <CardDescription className="text-base mt-4">{feature.description}</CardDescription>
                   </CardContent>
                 </Card>
               ))}

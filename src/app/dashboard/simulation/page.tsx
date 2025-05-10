@@ -1,7 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { WakeUpSimulator } from "@/components/simulation/WakeUpSimulator";
 import { SlidersHorizontal, Zap, House } from "lucide-react";
-import Image from "next/image";
 
 export default function SimulationPage() {
   return (
@@ -13,14 +12,7 @@ export default function SimulationPage() {
             Test and configure your smart wake-up experience and home automation scenarios.
           </p>
         </div>
-         <Image 
-            src="https://picsum.photos/seed/simulationbanner/400/200" 
-            alt="Simulation banner"
-            width={400}
-            height={200}
-            className="rounded-lg shadow-md object-cover"
-            data-ai-hint="home automation"
-        />
+         {/* Image removed */}
       </div>
 
       <Card className="shadow-lg">

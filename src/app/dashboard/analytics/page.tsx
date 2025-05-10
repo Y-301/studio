@@ -4,7 +4,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { BarChart3, TrendingUp, BedDouble, Coffee } from "lucide-react";
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from 'recharts';
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
-import Image from "next/image";
 
 const sleepData = [
   { date: "Mon", hours: 7.5 },
@@ -144,14 +143,7 @@ export default function AnalyticsPage() {
             <CardDescription>Insights into your most used devices and routines. (Coming Soon)</CardDescription>
         </CardHeader>
         <CardContent className="text-center py-12">
-            <Image 
-                src="https://picsum.photos/seed/deviceusage/600/300"
-                alt="Device Usage Placeholder"
-                width={600}
-                height={300}
-                className="rounded-lg shadow-md object-cover mx-auto"
-                data-ai-hint="data charts"
-            />
+            {/* Image removed */}
             <p className="mt-4 text-muted-foreground">Detailed device usage analytics are under development.</p>
         </CardContent>
       </Card>

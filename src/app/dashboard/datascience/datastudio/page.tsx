@@ -1,6 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Workflow } from "lucide-react";
-import Image from "next/image";
 
 export default function DataStudioPage() {
   return (
@@ -22,14 +21,7 @@ export default function DataStudioPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="text-center py-12">
-          <Image
-            src="https://picsum.photos/seed/datastudio/600/300"
-            alt="Data Studio Placeholder"
-            width={600}
-            height={300}
-            className="rounded-lg shadow-md object-cover mx-auto"
-            data-ai-hint="flowchart nodes"
-          />
+          {/* Image removed */}
           <p className="mt-4 text-muted-foreground">Data studio features are currently under development.</p>
         </CardContent>
       </Card>

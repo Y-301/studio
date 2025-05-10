@@ -132,7 +132,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                   <Avatar className="h-8 w-8">
-                    <AvatarImage src="https://picsum.photos/seed/avatar/100/100" alt="User Avatar" data-ai-hint="person avatar" />
+                    {/* <AvatarImage src="https://picsum.photos/seed/avatar/100/100" alt="User Avatar" data-ai-hint="person avatar" /> */}
                     <AvatarFallback>
                       <UserCircle />
                     </AvatarFallback>

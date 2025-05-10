@@ -6,7 +6,6 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Settings2 } from "lucide-react";
 import React from "react";
-import Image from "next/image";
 
 interface DeviceCardProps {
   id: string;
@@ -47,14 +46,10 @@ export function DeviceCard({ id, name, type, status, Icon, dataAiHint }: DeviceC
         <CardDescription className="text-xs capitalize">{type}</CardDescription>
       </CardHeader>
       <CardContent className="flex-grow flex flex-col justify-center items-center">
-        <Image 
-            src={`https://picsum.photos/seed/${id}/200/150`} 
-            alt={name}
-            width={200}
-            height={150}
-            className="rounded-md mb-3 object-cover aspect-[4/3]"
-            data-ai-hint={dataAiHint || type}
-        />
+        {/* Image removed */}
+        <div className="h-[150px] w-[200px] bg-muted rounded-md mb-3 flex items-center justify-center">
+            <p className="text-sm text-muted-foreground">Device Image</p>
+        </div>
         <p className="text-sm font-semibold text-foreground">
           {type === "light" || type === "speaker" ? (isOn ? "On" : "Off") : status}
         </p>

@@ -2,7 +2,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { FileText, Activity, AlertTriangle } from "lucide-react";
-import Image from "next/image";
 
 // Mock log data
 const activityLogs = [
@@ -50,14 +49,7 @@ export default function LogsPage() {
                     <p className="text-xs text-muted-foreground mt-1">{log.details}</p>
                   </div>
                 ))}
-                 <Image 
-                    src="https://picsum.photos/seed/activitylog/500/250"
-                    alt="Activity Log Visual"
-                    width={500}
-                    height={250}
-                    className="rounded-md mt-4 mx-auto opacity-50"
-                    data-ai-hint="log data"
-                />
+                 {/* Image removed */}
               </ScrollArea>
             </CardContent>
           </Card>
@@ -82,14 +74,7 @@ export default function LogsPage() {
                     </div>
                   </div>
                 ))}
-                <Image 
-                    src="https://picsum.photos/seed/systemlog/500/250"
-                    alt="System Log Visual"
-                    width={500}
-                    height={250}
-                    className="rounded-md mt-4 mx-auto opacity-50"
-                    data-ai-hint="server logs"
-                />
+                {/* Image removed */}
               </ScrollArea>
             </CardContent>
           </Card>
