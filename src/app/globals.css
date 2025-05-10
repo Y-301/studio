@@ -105,4 +105,33 @@ body {
   select {
     @apply bg-input border-transparent focus:border-primary focus:ring-primary;
   }
+
+  /* Custom Scrollbar Styles */
+  /* For Webkit-based browsers (Chrome, Safari, Edge) */
+  ::-webkit-scrollbar {
+    width: 8px; /* Width of the scrollbar */
+    height: 8px; /* Height of the scrollbar for horizontal scroll */
+  }
+
+  ::-webkit-scrollbar-track {
+    background: hsl(var(--muted) / 0.5); /* Muted background for the track */
+    border-radius: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground)); /* Muted foreground for the thumb */
+    border-radius: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--accent)); /* Accent color on hover */
+  }
+
+  /* For Firefox (Limited customization) */
+  /* Firefox only supports scrollbar-color and scrollbar-width */
+  /* This will provide a simpler two-color scrollbar in Firefox */
+  html {
+    scrollbar-width: thin; /* "auto" or "thin" */
+    scrollbar-color: hsl(var(--muted-foreground)) hsl(var(--muted) / 0.5); /* thumb track */
+  }
 }
