@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WakeUpSimulator } from "@/components/simulation/WakeUpSimulator";
 import { DeviceCard, type Device } from '@/components/devices/DeviceCard'; 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SlidersHorizontal, Zap, House, Eye, Edit, PlusSquare, Trash2, Maximize, ChevronsUpDown, Lightbulb, Thermometer, Speaker, LayoutPanelLeft, MapPin, Palette, GripVertical } from "lucide-react";
+import { SlidersHorizontal, Zap, House, Eye, Edit, PlusSquare, Trash2, Maximize, ChevronsUpDown, Lightbulb, Thermometer, Speaker, LayoutPanelLeft, MapPin, Palette, GripVertical, Save, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,6 +27,7 @@ const mockSimDevices: Device[] = [
 const initialMockRooms = ["Living Room", "Bedroom", "Kitchen", "Office", "Unassigned"];
 const mockFloors = ["Ground Floor", "First Floor"];
 
+// Frontend state structure
 interface FloorPlanRoom {
   id: string;
   name: string;
@@ -46,6 +47,30 @@ interface FloorPlanDevice {
   width: number; // Percentage (for icon container)
   height: number; // Percentage (for icon container)
 }
+
+// API data structure (mirroring what's in the API route)
+interface APIPlacedDevice {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+interface APIFloorPlanRoom {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  devices: string[];
+}
+interface FloorPlanDataFromAPI {
+  rooms: APIFloorPlanRoom[];
+  placedDevices: APIPlacedDevice[];
+  selectedFloor: string;
+}
+
 
 interface DraggingInfo {
   id: string;
@@ -68,8 +93,8 @@ interface ResizingInfo {
   startMouseYPercent: number;
 }
 
-const MIN_ROOM_SIZE_PERCENT = 10; // Minimum 10% width/height for rooms
-const DEVICE_ICON_SIZE_PERCENT = 5; // Approx size for device icons on plan
+const MIN_ROOM_SIZE_PERCENT = 10; 
+const DEVICE_ICON_SIZE_PERCENT = 5; 
 
 
 export default function SimulationPage() {
@@ -79,16 +104,9 @@ export default function SimulationPage() {
   const { toast } = useToast();
   const floorPlanRef = useRef<HTMLDivElement>(null);
 
-  const [floorPlanRooms, setFloorPlanRooms] = useState<FloorPlanRoom[]>([
-    { id: "fp-lr", name: "Living Room", x: 10, y: 10, width: 35, height: 30, devices: ["sim-light-1", "sim-thermo-1"]},
-    { id: "fp-k", name: "Kitchen", x: 50, y: 10, width: 25, height: 25, devices: ["sim-speaker-1"]},
-    { id: "fp-br", name: "Bedroom", x: 10, y: 45, width: 30, height: 25, devices: ["sim-blinds-1"]},
-  ]);
-  const [floorPlanDevices, setFloorPlanDevices] = useState<FloorPlanDevice[]>([
-    {id: "sim-light-1", name: "LR Light", icon: Lightbulb, x: 15, y: 15, width: DEVICE_ICON_SIZE_PERCENT, height: DEVICE_ICON_SIZE_PERCENT},
-    {id: "sim-thermo-1", name: "LR Thermo", icon: Thermometer, x: 20, y: 20, width: DEVICE_ICON_SIZE_PERCENT, height: DEVICE_ICON_SIZE_PERCENT},
-    {id: "sim-speaker-1", name: "Kitchen Spk", icon: Speaker, x: 55, y: 15, width: DEVICE_ICON_SIZE_PERCENT, height: DEVICE_ICON_SIZE_PERCENT},
-  ]);
+  const [floorPlanRooms, setFloorPlanRooms] = useState<FloorPlanRoom[]>([]);
+  const [floorPlanDevices, setFloorPlanDevices] = useState<FloorPlanDevice[]>([]);
+  
   const [isAddRoomModalOpen, setIsAddRoomModalOpen] = useState(false);
   const [newRoomName, setNewRoomName] = useState("");
   const [isAddDeviceModalOpen, setIsAddDeviceModalOpen] = useState(false);
@@ -96,6 +114,92 @@ export default function SimulationPage() {
 
   const [draggingElementInfo, setDraggingElementInfo] = useState<DraggingInfo | null>(null);
   const [resizingRoomInfo, setResizingRoomInfo] = useState<ResizingInfo | null>(null);
+  const [isLoadingPlan, setIsLoadingPlan] = useState(true);
+  const [isSavingPlan, setIsSavingPlan] = useState(false);
+
+  // Helper to get icon component from device type string
+  const getIconComponent = (type: string): React.ElementType => {
+    const device = mockSimDevices.find(d => d.type === type); // Or a dedicated map
+    return device?.icon || Palette; // Fallback icon
+  };
+  
+  // Load floor plan data on mount
+  useEffect(() => {
+    const loadPlan = async () => {
+      setIsLoadingPlan(true);
+      try {
+        const response = await fetch('/api/simulation/floorplan');
+        if (!response.ok) {
+          throw new Error(`Failed to fetch floor plan: ${response.statusText}`);
+        }
+        const data: FloorPlanDataFromAPI = await response.json();
+        
+        setFloorPlanRooms(data.rooms.map(room => ({ ...room }))); // APIFloorPlanRoom matches FloorPlanRoom
+        
+        const hydratedDevices = data.placedDevices.map(apiDevice => {
+          const fullDevice = mockSimDevices.find(d => d.id === apiDevice.id);
+          return {
+            ...apiDevice,
+            name: fullDevice?.name || 'Unknown Device',
+            icon: fullDevice?.icon || Palette,
+          };
+        });
+        setFloorPlanDevices(hydratedDevices);
+        setSelectedFloor(data.selectedFloor || mockFloors[0]);
+        toast({ title: "Floor plan loaded", description: "Retrieved existing floor plan."});
+      } catch (error) {
+        console.error("Error loading floor plan:", error);
+        toast({ title: "Error Loading Plan", description: (error as Error).message, variant: "destructive" });
+        // Initialize with default/empty if load fails or no data
+        setFloorPlanRooms([
+          { id: "fp-lr", name: "Living Room (Default)", x: 10, y: 10, width: 35, height: 30, devices: ["sim-light-1", "sim-thermo-1"]},
+        ]);
+        setFloorPlanDevices([
+          {id: "sim-light-1", name: "LR Light", icon: Lightbulb, x: 15, y: 15, width: DEVICE_ICON_SIZE_PERCENT, height: DEVICE_ICON_SIZE_PERCENT},
+        ]);
+      } finally {
+        setIsLoadingPlan(false);
+      }
+    };
+    loadPlan();
+  }, [toast]); // Added toast to dependencies
+
+  // Save floor plan data
+  const handleSavePlan = async () => {
+    setIsSavingPlan(true);
+    try {
+      const apiPlacedDevices: APIPlacedDevice[] = floorPlanDevices.map(fpd => ({
+        id: fpd.id,
+        x: fpd.x,
+        y: fpd.y,
+        width: fpd.width,
+        height: fpd.height,
+      }));
+
+      const dataToSave: FloorPlanDataFromAPI = {
+        rooms: floorPlanRooms, // APIFloorPlanRoom matches FloorPlanRoom
+        placedDevices: apiPlacedDevices,
+        selectedFloor: selectedFloor,
+      };
+
+      const response = await fetch('/api/simulation/floorplan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dataToSave),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Failed to save floor plan: ${response.statusText}`);
+      }
+      toast({ title: "Floor Plan Saved", description: "Your changes have been saved successfully." });
+    } catch (error) {
+      console.error("Error saving floor plan:", error);
+      toast({ title: "Error Saving Plan", description: (error as Error).message, variant: "destructive" });
+    } finally {
+      setIsSavingPlan(false);
+    }
+  };
 
 
   const devicesForSelectedRoom = selectedRoomTab === "All" 
@@ -152,28 +256,31 @@ export default function SimulationPage() {
   };
   
   const handleDeviceControlChange = (deviceId: string, controlType: "brightness" | "volume" | "status", value: any) => {
-    const device = mockSimDevices.find(d => d.id === deviceId);
-    if(device) {
-        let statusMessage = `${device.name} ${controlType} set to ${value}`;
+    // This function primarily updates the status of devices in the list view below the floor plan.
+    // The visual representation on the floor plan itself (e.g. light on/off) is not directly handled here yet.
+    const deviceIndex = mockSimDevices.findIndex(d => d.id === deviceId);
+    if (deviceIndex !== -1) {
+        // This is a mock update. In a real app, mockSimDevices would be stateful and reflect these changes.
+        let statusMessage = `${mockSimDevices[deviceIndex].name} ${controlType} set to ${value}`;
         if (controlType === "status") {
-            statusMessage = `${device.name} turned ${value ? "On" : "Off"}`;
+             statusMessage = `${mockSimDevices[deviceIndex].name} turned ${value ? "On" : "Off"}`;
         }
         toast({ title: "Device Control (List Demo)", description: statusMessage });
+        
+        // If you want to reflect status change on the DeviceCard in the list:
+        // This part is tricky as mockSimDevices is a const. To make it truly interactive in the list,
+        // mockSimDevices would need to be part of the component's state.
+        // For now, we just toast.
     }
   };
 
    const handleDeviceSimulationControl = (deviceId: string, controlType: "brightness" | "volume" | "status", value: any) => {
     const deviceIndex = mockSimDevices.findIndex(d => d.id === deviceId);
     if (deviceIndex !== -1) {
-        const updatedDevice = { ...mockSimDevices[deviceIndex] };
-        if (controlType === "brightness") updatedDevice.brightness = value;
-        if (controlType === "volume") updatedDevice.volume = value;
-        if (controlType === "status") updatedDevice.status = value ? "On" : "Off"; // Assuming value is boolean for toggle
-        
-        // This is a mock update. In a real app, `mockSimDevices` would be stateful.
-        // For now, we're just logging and toasting.
+        // This is a mock update for the simulation effects.
+        // In a real app, this might send commands to a simulation engine or update a global state.
         console.log(`Sim (Mock): ${deviceId} ${controlType} changed to ${value}.`);
-        toast({ title: "Device Control (Sim)", description: `${updatedDevice.name} ${controlType} set to ${value}`});
+        toast({ title: "Device Control (Sim Effect)", description: `${mockSimDevices[deviceIndex].name} ${controlType} set to ${value} in simulation.`});
     }
   };
 
@@ -245,20 +352,17 @@ export default function SimulationPage() {
         let newX = mouseXPercent - draggingElementInfo.offsetXPercent;
         let newY = mouseYPercent - draggingElementInfo.offsetYPercent;
 
-        // Boundary checks
         newX = Math.max(0, Math.min(newX, 100 - draggingElementInfo.elementWidthPercent));
         newY = Math.max(0, Math.min(newY, 100 - draggingElementInfo.elementHeightPercent));
 
         if (draggingElementInfo.type === 'room') {
-          const updatedRoom: FloorPlanRoom = {
-            ...floorPlanRooms.find(r => r.id === draggingElementInfo.id)!,
-            x: newX,
-            y: newY,
-          };
-          if (!checkRoomCollision(updatedRoom, floorPlanRooms)) {
+          const currentRoom = floorPlanRooms.find(r => r.id === draggingElementInfo.id);
+          if (!currentRoom) return;
+          const updatedRoom: FloorPlanRoom = { ...currentRoom, x: newX, y: newY };
+          if (!checkRoomCollision(updatedRoom, floorPlanRooms.filter(r => r.id !== draggingElementInfo.id))) {
             setFloorPlanRooms(prev => prev.map(r => r.id === draggingElementInfo.id ? updatedRoom : r));
           }
-        } else { // device
+        } else { 
           setFloorPlanDevices(prev => prev.map(d => d.id === draggingElementInfo.id ? { ...d, x: newX, y: newY } : d));
         }
       } else if (resizingRoomInfo) {
@@ -268,7 +372,6 @@ export default function SimulationPage() {
         let newWidth = resizingRoomInfo.initialWidthPercent + (mouseXPercent - resizingRoomInfo.startMouseXPercent);
         let newHeight = resizingRoomInfo.initialHeightPercent + (mouseYPercent - resizingRoomInfo.startMouseYPercent);
 
-        // Min size and boundary checks
         newWidth = Math.max(MIN_ROOM_SIZE_PERCENT, Math.min(newWidth, 100 - resizingRoomInfo.initialXPercent));
         newHeight = Math.max(MIN_ROOM_SIZE_PERCENT, Math.min(newHeight, 100 - resizingRoomInfo.initialYPercent));
         
@@ -294,6 +397,15 @@ export default function SimulationPage() {
   }, [draggingElementInfo, resizingRoomInfo, floorPlanRooms, floorPlanDevices, editMode]);
 
 
+  if (isLoadingPlan) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-200px)]">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-4 text-lg text-muted-foreground">Loading Floor Plan...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
@@ -317,13 +429,13 @@ export default function SimulationPage() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-2">
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Button onClick={() => setEditMode(!editMode)} variant={editMode ? "default" : "outline"}>
                 {editMode ? <Eye className="mr-2 h-4 w-4" /> : <Edit className="mr-2 h-4 w-4" />}
                 {editMode ? "View Mode" : "Edit Mode"}
               </Button>
               <Select value={selectedFloor} onValueChange={setSelectedFloor}>
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-full sm:w-[180px]">
                   <SelectValue placeholder="Select floor" />
                 </SelectTrigger>
                 <SelectContent>
@@ -332,9 +444,13 @@ export default function SimulationPage() {
               </Select>
             </div>
             {editMode && (
-              <div className="flex gap-2">
+              <div className="flex gap-2 mt-2 sm:mt-0 flex-wrap">
                 <Button variant="outline" size="sm" onClick={() => setIsAddRoomModalOpen(true)}><PlusSquare className="mr-2 h-4 w-4" /> Add Room</Button>
-                <Button variant="outline" size="sm" onClick={() => setIsAddDeviceModalOpen(true)}><Maximize className="mr-2 h-4 w-4" /> Add Device to Plan</Button>
+                <Button variant="outline" size="sm" onClick={() => setIsAddDeviceModalOpen(true)}><Maximize className="mr-2 h-4 w-4" /> Add Device</Button>
+                <Button variant="default" size="sm" onClick={handleSavePlan} disabled={isSavingPlan}>
+                  {isSavingPlan ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Save Plan
+                </Button>
               </div>
             )}
           </div>
@@ -343,12 +459,12 @@ export default function SimulationPage() {
             id="floor-plan-container" 
             ref={floorPlanRef}
             className={cn(
-                "relative w-full h-[400px] md:h-[500px] bg-muted/30 border-2 border-border rounded-lg flex items-center justify-center overflow-hidden p-2",
+                "relative w-full h-[400px] md:h-[500px] bg-muted/30 border-2 border-border rounded-lg flex items-center justify-center overflow-hidden p-2 shadow-inner",
                 editMode && "border-dashed border-primary/50 cursor-grab",
                 (draggingElementInfo || resizingRoomInfo) && "cursor-grabbing"
             )}
             style={{
-                 backgroundImage: editMode ? 'linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(to right, var(--border) 1px, transparent 1px)' : 'none',
+                 backgroundImage: editMode ? 'linear-gradient(hsl(var(--border)/0.3) 1px, transparent 1px), linear-gradient(to right, hsl(var(--border)/0.3) 1px, transparent 1px)' : 'none',
                  backgroundSize: editMode ? '20px 20px' : 'auto',
             }}
           >
@@ -362,10 +478,10 @@ export default function SimulationPage() {
             {floorPlanRooms.map(room => (
                 <div key={room.id}
                     className={cn(
-                        "absolute bg-primary/20 border border-primary rounded p-1 text-xs text-primary-foreground flex items-center justify-center",
+                        "absolute bg-primary/20 border border-primary rounded p-1 text-xs text-primary-foreground flex items-center justify-center shadow-md",
                         editMode && "cursor-grab hover:border-primary/80 hover:bg-primary/30 transition-all",
-                        draggingElementInfo?.id === room.id && "opacity-70 ring-2 ring-primary z-10",
-                        resizingRoomInfo?.id === room.id && "opacity-70 ring-2 ring-accent z-10"
+                        draggingElementInfo?.id === room.id && "opacity-70 ring-2 ring-primary z-10 shadow-lg",
+                        resizingRoomInfo?.id === room.id && "opacity-70 ring-2 ring-accent z-10 shadow-lg"
                     )}
                     style={{ 
                         left: `${room.x}%`, top: `${room.y}%`, 
@@ -374,12 +490,12 @@ export default function SimulationPage() {
                     title={room.name}
                     onMouseDown={(e) => handleMouseDownShared(e, room.id, 'room')}
                 >
-                    {room.name}
+                    <span className="truncate pointer-events-none">{room.name}</span>
                     {editMode && (
                         <>
-                            <Button variant="ghost" size="icon" className="absolute -top-2 -right-2 h-5 w-5 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-0.5 z-20" onClick={(e) => { e.stopPropagation(); setFloorPlanRooms(prev => prev.filter(r => r.id !== room.id)); toast({title:"Room Removed", description: `${room.name} removed from plan.`})}}><Trash2 className="h-3 w-3"/></Button>
+                            <Button variant="ghost" size="icon" className="absolute -top-2 -right-2 h-5 w-5 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-0.5 z-20 shadow" onClick={(e) => { e.stopPropagation(); setFloorPlanRooms(prev => prev.filter(r => r.id !== room.id)); toast({title:"Room Removed", description: `${room.name} removed from plan.`})}}><Trash2 className="h-3 w-3"/></Button>
                             <div 
-                                className="absolute bottom-0 right-0 w-3 h-3 bg-accent rounded-full cursor-se-resize border-2 border-background z-20 hover:scale-125 transition-transform"
+                                className="absolute bottom-0 right-0 w-3 h-3 bg-accent rounded-full cursor-se-resize border-2 border-background z-20 hover:scale-125 transition-transform shadow"
                                 onMouseDown={(e) => handleResizeMouseDown(e, room.id)}
                                 title={`Resize ${room.name}`}
                             >
@@ -394,25 +510,25 @@ export default function SimulationPage() {
                 return (
                     <div key={device.id}
                         className={cn(
-                            "absolute flex flex-col items-center justify-center text-center p-1 bg-accent/30 border border-accent rounded-md shadow-sm z-5", // Ensure devices are above rooms but below dragging element
+                            "absolute flex flex-col items-center justify-center text-center p-1 bg-accent/30 border border-accent rounded-md shadow-sm z-5", 
                             editMode && "cursor-grab hover:border-accent/80 hover:bg-accent/40 transition-all",
-                            draggingElementInfo?.id === device.id && "opacity-70 ring-2 ring-accent z-10"
+                            draggingElementInfo?.id === device.id && "opacity-70 ring-2 ring-accent z-10 shadow-lg"
                         )}
                          style={{ left: `${device.x}%`, top: `${device.y}%`, width: `${device.width}%`, height: `${device.height}%`}}
                          title={device.name}
                          onMouseDown={(e) => handleMouseDownShared(e, device.id, 'device')}
                     >
-                        <DeviceIconComponent className="h-3/4 w-3/4 text-accent-foreground"/>
-                        <span className="text-[8px] md:text-[10px] text-accent-foreground truncate max-w-full block leading-tight">{device.name.split(" ")[0]}</span>
-                        {editMode && <Button variant="ghost" size="icon" className="absolute -top-1 -right-1 h-4 w-4 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-0.5 z-20" onClick={(e) => { e.stopPropagation(); setFloorPlanDevices(prev => prev.filter(d => d.id !== device.id)); toast({title:"Device Removed from Plan", description: `${device.name} removed.`})}}><Trash2 className="h-2 w-2"/></Button>}
+                        <DeviceIconComponent className="h-3/4 w-3/4 text-accent-foreground pointer-events-none"/>
+                        <span className="text-[8px] md:text-[10px] text-accent-foreground truncate max-w-full block leading-tight pointer-events-none">{device.name.split(" ")[0]}</span>
+                        {editMode && <Button variant="ghost" size="icon" className="absolute -top-1 -right-1 h-4 w-4 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-0.5 z-20 shadow" onClick={(e) => { e.stopPropagation(); setFloorPlanDevices(prev => prev.filter(d => d.id !== device.id)); toast({title:"Device Removed from Plan", description: `${device.name} removed.`})}}><Trash2 className="h-2 w-2"/></Button>}
                     </div>
                 );
             })}
             {editMode && !draggingElementInfo && !resizingRoomInfo && (
-                <p className="absolute bottom-2 left-2 text-xs text-muted-foreground bg-background/80 p-1 rounded">Edit Mode: Drag rooms/devices. Resize rooms using bottom-right handle.</p>
+                <p className="absolute bottom-2 left-2 text-xs text-muted-foreground bg-background/80 p-1 rounded shadow">Edit Mode: Drag rooms/devices. Resize rooms using bottom-right handle.</p>
             )}
              {(draggingElementInfo || resizingRoomInfo) && (
-                 <p className="absolute bottom-2 left-2 text-xs text-primary bg-background/80 p-1 rounded font-semibold animate-pulse">
+                 <p className="absolute bottom-2 left-2 text-xs text-primary bg-background/80 p-1 rounded font-semibold animate-pulse shadow">
                     {draggingElementInfo ? `Dragging ${draggingElementInfo.type}...` : "Resizing room..."}
                 </p>
             )}
@@ -444,8 +560,8 @@ export default function SimulationPage() {
             <Select value={deviceToAddToPlan} onValueChange={setDeviceToAddToPlan}>
                 <SelectTrigger id="device-to-add-select"><SelectValue placeholder="Choose a device" /></SelectTrigger>
                 <SelectContent>
-                    {mockSimDevices.filter(d => !floorPlanDevices.find(fpd => fpd.id === d.id)).map(d => (
-                        <SelectItem key={d.id} value={d.id}>{d.name} ({d.type})</SelectItem>
+                    {mockSimDevices.filter(d => !floorPlanDevices.find(fpd => fpd.id === d.id)).map(d_item => ( // Renamed d to d_item
+                        <SelectItem key={d_item.id} value={d_item.id}>{d_item.name} ({d_item.type})</SelectItem>
                     ))}
                     {mockSimDevices.filter(d => !floorPlanDevices.find(fpd => fpd.id === d.id)).length === 0 && <p className="p-2 text-sm text-muted-foreground">All devices added.</p>}
                 </SelectContent>
@@ -466,7 +582,7 @@ export default function SimulationPage() {
         </CardHeader>
         <CardContent>
             <Tabs value={selectedRoomTab} onValueChange={setSelectedRoomTab} className="w-full">
-                <TabsList className="grid w-full grid-cols-3 md:grid-cols-5 mb-4">
+                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-6 mb-4">
                     <TabsTrigger value="All">All</TabsTrigger>
                     {initialMockRooms.map(room => (
                         <TabsTrigger key={room} value={room}>{room}</TabsTrigger>
@@ -481,8 +597,8 @@ export default function SimulationPage() {
                                     {...device} 
                                     onBrightnessChange={(value) => handleDeviceControlChange(device.id, "brightness", value)}
                                     onVolumeChange={(value) => handleDeviceControlChange(device.id, "volume", value)}
-                                    onSimulationBrightnessChange={(value) => handleDeviceSimulationControl(device.id, "brightness", value)}
-                                    onSimulationVolumeChange={(value) => handleDeviceSimulationControl(device.id, "volume", value)}
+                                      onSimulationBrightnessChange={(value) => handleDeviceSimulationControl(device.id, "brightness", value)}
+                                        onSimulationVolumeChange={(value) => handleDeviceSimulationControl(device.id, "volume", value)}
                                     onToggle={(isOn) => handleDeviceControlChange(device.id, "status", isOn)}
                                     onColorChange={() => toast({title:"Change Color (Sim Demo)"})}
                                 />
