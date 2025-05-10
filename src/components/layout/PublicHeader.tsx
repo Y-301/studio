@@ -21,8 +21,8 @@ export function PublicHeader() {
               <Link href="/learn-more">Learn More</Link>
             </Button>
           </nav>
+          <ThemeToggle />
           <div className="flex items-center gap-x-2">
-            <ThemeToggle />
             <Button asChild size="sm">
               <Link href="/auth/login">Login</Link>
             </Button>
@@ -35,3 +35,4 @@ export function PublicHeader() {
     </header>
   );
 }
+
