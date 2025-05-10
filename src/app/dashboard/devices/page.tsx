@@ -1,13 +1,14 @@
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DeviceCard } from "@/components/devices/DeviceCard";
-import { PlusCircle, Lightbulb, Thermometer, VenetianBlind, Speaker } from "lucide-react";
+import { PlusCircle, Lightbulb, Thermometer, LayoutPanelTop, Speaker, Smartphone } from "lucide-react";
 
 // Mock device data
 const devices = [
   { id: "1", name: "Living Room Lamp", type: "light", status: "On", icon: Lightbulb, dataAiHint: "lamp light" },
   { id: "2", name: "Bedroom Thermostat", type: "thermostat", status: "22°C", icon: Thermometer, dataAiHint: "thermostat control" },
-  { id: "3", name: "Kitchen Blinds", type: "blinds", status: "50% Open", icon: VenetianBlind, dataAiHint: "window blinds" },
+  { id: "3", name: "Kitchen Blinds", type: "blinds", status: "50% Open", icon: LayoutPanelTop, dataAiHint: "window blinds" },
   { id: "4", name: "Office Speaker", type: "speaker", status: "Paused", icon: Speaker, dataAiHint: "bluetooth speaker" },
   { id: "5", name: "Outdoor Lights", type: "light", status: "Off", icon: Lightbulb, dataAiHint: "outdoor lighting" },
   { id: "6", name: "Nursery Temp Sensor", type: "sensor", status: "21°C", icon: Thermometer, dataAiHint: "temperature sensor" },
@@ -65,3 +66,4 @@ export default function DevicesPage() {
     </div>
   );
 }
+
