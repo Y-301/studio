@@ -28,7 +28,7 @@ import React from "react";
 
 const formSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
-  password: z.string().min(6, { message: "Password must be at least 6 characters." }),
+  password: z.string().min(1, { message: "Password is required." }),
 });
 
 export default function LoginPage() {
@@ -55,17 +55,12 @@ export default function LoginPage() {
       router.push("/dashboard");
     } catch (error: any) {
       console.error("Login error:", error);
-      let errorMessage = "Invalid email or password. Please try again.";
-      if (error.code === "auth/invalid-credential" || error.code === "auth/user-not-found" || error.code === "auth/wrong-password") {
-        errorMessage = "Invalid email or password. Please check your credentials and try again.";
-      } else if (error.code === "auth/network-request-failed") {
-        errorMessage = "Network error. Please check your internet connection and try again.";
-      } else if (error.code === "auth/api-key-not-valid" || error.code === "auth/app-deleted" || error.code === "auth/app-not-authorized") {
-        errorMessage = "Firebase configuration error. Please contact support.";
-      } else if (error.message) {
-        errorMessage = error.message;
+      let errorMessage = "Could not sign in. Please check your credentials and try again.";
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+        errorMessage = "Invalid email or password. Please try again.";
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMessage = "Too many failed login attempts. Please try again later.";
       }
-      
       toast({
         title: "Login Failed",
         description: errorMessage,
@@ -83,9 +78,9 @@ export default function LoginPage() {
         <Card className="w-full max-w-md shadow-xl">
           <CardHeader className="text-center">
             <Logo className="justify-center mb-4" iconSize={32} textSize="text-3xl" />
-            <CardTitle className="text-2xl font-bold tracking-tight">Welcome Back!</CardTitle>
+            <CardTitle className="text-2xl font-bold tracking-tight">Welcome Back</CardTitle>
             <CardDescription>
-              Sign in to continue to your WakeSync dashboard.
+              Sign in to access your WakeSync dashboard.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -117,10 +112,12 @@ export default function LoginPage() {
                     </FormItem>
                   )}
                 />
-                <div className="flex items-center justify-between text-sm">
-                  <Link href="/auth/forgot-password" className="font-medium text-primary hover:underline">
-                    Forgot your password?
-                  </Link>
+                <div className="flex items-center justify-between">
+                  <div className="text-sm">
+                    <Link href="/auth/forgot-password" className="font-medium text-primary hover:underline">
+                      Forgot your password?
+                    </Link>
+                  </div>
                 </div>
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
