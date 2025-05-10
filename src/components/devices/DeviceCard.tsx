@@ -15,7 +15,7 @@ interface DeviceCardProps {
   name: string;
   type: string;
   status: string;
-  Icon: LucideIcon;
+  icon: LucideIcon; // Changed from Icon to icon
   room?: string;
   dataAiHint?: string;
   brightness?: number;
@@ -27,7 +27,7 @@ interface DeviceCardProps {
   onToggle?: (isOn: boolean) => void; 
   onSimulationBrightnessChange?: (value: number) => void; // For simulation page
   onSimulationVolumeChange?: (value: number) => void; // For simulation page
-  connectionDetails?: string; // Added to satisfy the Device type for simulation
+  connectionDetails?: string; 
 }
 
 export type Device = DeviceCardProps;
@@ -37,7 +37,7 @@ export function DeviceCard({
   name, 
   type, 
   status, 
-  Icon, 
+  icon: IconComponent, // Changed from Icon to icon, and aliased to IconComponent for JSX
   room, 
   dataAiHint,
   brightness,
@@ -85,7 +85,7 @@ export function DeviceCard({
     <Card className="flex flex-col justify-between shadow-md hover:shadow-xl transition-shadow duration-300 group">
       <CardHeader className="pb-2">
         <div className="flex justify-between items-start">
-          <Icon className="h-8 w-8 text-primary mb-2 group-hover:scale-110 transition-transform" />
+          <IconComponent className="h-8 w-8 text-primary mb-2 group-hover:scale-110 transition-transform" />
           {isToggleable && (
             <Switch
               checked={isOn}

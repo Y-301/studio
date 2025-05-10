@@ -191,7 +191,7 @@ export default function DevicesPage() {
                   name={device.name}
                   type={device.type}
                   status={device.status}
-                  Icon={device.icon}
+                  icon={device.icon}
                   room={device.room}
                   dataAiHint={device.dataAiHint}
                   brightness={device.brightness}
