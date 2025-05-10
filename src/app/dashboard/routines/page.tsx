@@ -18,14 +18,15 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription as ShadcnFormDescription } from "@/components/ui/form"; // Added Form components
 import { Separator } from "@/components/ui/separator";
+import { useToast } from "@/hooks/use-toast";
 
 
 const triggerTypes = ["time", "wristband_event", "manual", "device_state_change"] as const;
-const actionDeviceTypes = ["light", "thermostat", "speaker", "blinds", "fan", "switch", "tv", "other"] as const; 
+const actionDeviceTypes = ["light", "thermostat", "speaker", "blinds", "fan", "switch", "tv", "other"] as const;
 
 const actionSchema = z.object({
     deviceId: z.string().min(1, "Device selection is required."),
-    deviceName: z.string(), 
+    deviceName: z.string(),
     deviceType: z.enum(actionDeviceTypes),
     targetState: z.string().min(1, "Target state is required (e.g., on, 22°C, 50% volume)."),
   });
@@ -34,7 +35,7 @@ const routineFormSchema = z.object({
   id: z.string().optional(),
   name: z.string().min(3, "Routine name must be at least 3 characters."),
   triggerType: z.enum(triggerTypes, { required_error: "Trigger type is required." }),
-  triggerDetails: z.string().optional(), 
+  triggerDetails: z.string().optional(),
   actions: z.array(actionSchema).min(1, "At least one action is required."),
   active: z.boolean().default(true),
 });
@@ -65,12 +66,13 @@ export default function RoutinesPage() {
   const [filter, setFilter] = useState<"all" | "morning" | "evening" | "custom">("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRoutine, setEditingRoutine] = useState<RoutineFormData | null>(null);
+  const { toast } = useToast();
 
   const form = useForm<RoutineFormData>({
     resolver: zodResolver(routineFormSchema),
     defaultValues: { name: "", actions: [], active: true, triggerDetails: "" },
   });
-  
+
   const { fields: actionsFields, append: appendAction, remove: removeAction } = useFieldArray({
     control: form.control,
     name: "actions"
@@ -94,10 +96,10 @@ export default function RoutinesPage() {
       name: routine.name,
       triggerType: routine.trigger.toLowerCase().includes("time") ? "time" : (routine.trigger.toLowerCase().includes("wristband") ? "wristband_event" : "manual"),
       triggerDetails: routine.trigger.split(" - ")[1] || "",
-      actions: [ 
+      actions: [
         { deviceId: "lamp1", deviceName: "Living Room Lamp", deviceType: "light", targetState: "on"},
         { deviceId: "thermo1", deviceName: "Bedroom Thermostat", deviceType: "thermostat", targetState: "22°C"}
-      ],
+      ], // Simplified mock actions for demo
       active: routine.active,
     };
     setEditingRoutine(mockFormData);
@@ -108,25 +110,40 @@ export default function RoutinesPage() {
   const onSubmit = (data: RoutineFormData) => {
     if (editingRoutine && editingRoutine.id) {
       setRoutines(prev => prev.map(r => r.id === editingRoutine.id ? { ...r, ...data, icon: r.icon, description: data.actions.map(a => a.targetState).join(', ') } : r));
+      toast({ title: "Routine Updated", description: `${data.name} has been updated successfully.`});
     } else {
-      const newRoutine = { 
-        ...data, 
-        id: String(Date.now()), 
-        icon: Clock, 
+      const newRoutine = {
+        ...data,
+        id: String(Date.now()),
+        icon: Clock, // Default icon for new routines
         description: data.actions.map(a => `${a.deviceName} to ${a.targetState}`).join(', '),
         actionsSummary: data.actions.map(a => a.targetState).join(', ').substring(0,30) + "...",
         trigger: `${data.triggerType} - ${data.triggerDetails || 'N/A'}`,
         lastRun: "Never",
         dataAiHint: data.triggerType,
       };
-      setRoutines(prev => [...prev, newRoutine as any]);
+      setRoutines(prev => [...prev, newRoutine as any]); // Type assertion for mock data
+      toast({ title: "Routine Created", description: `${newRoutine.name} has been created.`});
     }
     setIsModalOpen(false);
     form.reset();
   };
 
   const toggleRoutineActive = (routineId: string) => {
-    setRoutines(prev => prev.map(r => r.id === routineId ? { ...r, active: !r.active } : r));
+    let routineName = "";
+    let newActiveState = false;
+    setRoutines(prev => prev.map(r => {
+      if (r.id === routineId) {
+        routineName = r.name;
+        newActiveState = !r.active;
+        return { ...r, active: newActiveState };
+      }
+      return r;
+    }));
+    toast({
+        title: `Routine ${newActiveState ? 'Activated' : 'Deactivated'}`,
+        description: `${routineName} is now ${newActiveState ? 'active' : 'inactive'}.`
+    });
   };
 
 
@@ -205,9 +222,9 @@ export default function RoutinesPage() {
           ) : (
             <div className="text-center py-12">
               <ListChecks className="mx-auto h-12 w-12 text-muted-foreground" />
-              <h3 className="mt-2 text-xl font-semibold">No Routines Yet</h3>
+              <h3 className="mt-2 text-xl font-semibold">No Routines Found</h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                Create your first routine to automate your tasks.
+                Try a different filter or create your first routine.
               </p>
               <Button className="mt-4" onClick={handleAddRoutine}>
                 <PlusCircle className="mr-2 h-4 w-4" /> Create Routine
@@ -238,7 +255,7 @@ export default function RoutinesPage() {
                   </FormItem>
                 )}
               />
-            
+
               <Card className="p-4 bg-secondary/30">
                 <CardHeader className="p-0 pb-3">
                     <CardTitle className="text-lg">Trigger</CardTitle>
@@ -277,7 +294,7 @@ export default function RoutinesPage() {
                     />
                 </CardContent>
               </Card>
-              
+
               <Separator />
 
               <Card className="p-4 bg-secondary/30">
@@ -300,13 +317,13 @@ export default function RoutinesPage() {
                             render={({ field: controllerField }) => (
                             <FormItem>
                                 <FormLabel>Device</FormLabel>
-                                <Select 
+                                <Select
                                     onValueChange={(value) => {
                                         const selectedDevice = mockDevicesForActions.find(d => d.id === value);
                                         form.setValue(`actions.${index}.deviceName`, selectedDevice?.name || "");
                                         form.setValue(`actions.${index}.deviceType`, selectedDevice?.type as any);
                                         controllerField.onChange(value);
-                                    }} 
+                                    }}
                                     defaultValue={controllerField.value}
                                 >
                                 <FormControl><SelectTrigger><SelectValue placeholder="Select Device" /></SelectTrigger></FormControl>
@@ -336,15 +353,15 @@ export default function RoutinesPage() {
                         <PlusCircle className="mr-2 h-4 w-4" /> Add Action
                     </Button>
                     {form.formState.errors.actions && typeof form.formState.errors.actions === 'object' && 'message' in form.formState.errors.actions && (
-                        <p className="text-destructive text-xs mt-1">{form.formState.errors.actions.message}</p>
+                        <p className="text-destructive text-xs mt-1">{String(form.formState.errors.actions.message)}</p>
                     )}
                      {form.formState.errors.actions?.root && (
                         <p className="text-destructive text-xs mt-1 flex items-center gap-1"><AlertTriangle className="h-3 w-3"/>{form.formState.errors.actions.root.message}</p>
                     )}
                 </CardContent>
               </Card>
-              
-            
+
+
               <FormField
                   control={form.control}
                   name="active"

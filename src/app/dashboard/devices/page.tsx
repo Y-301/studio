@@ -47,7 +47,7 @@ const deviceFormSchema = z.object({
   name: z.string().min(3, "Device name must be at least 3 characters."),
   type: z.enum(deviceTypes, { required_error: "Device type is required." }),
   room: z.enum(roomTypes, { required_error: "Room is required." }),
-  connectionDetails: z.string().optional(), 
+  connectionDetails: z.string().optional(),
 });
 
 type DeviceFormData = z.infer<typeof deviceFormSchema>;
@@ -93,16 +93,16 @@ export default function DevicesPage() {
     });
     setIsModalOpen(true);
   };
-  
+
   const onSubmit = (data: DeviceFormData) => {
     if (editingDevice && editingDevice.id) {
       setDevices(prev => prev.map(d => d.id === editingDevice.id ? { ...d, ...data, icon: deviceIconMap[data.type] || Palette } : d));
       toast({ title: "Device Updated", description: `${data.name} has been updated.` });
     } else {
-      const newDevice: Device = { 
-        ...data, 
-        id: String(Date.now()), 
-        status: data.type === 'light' || data.type === 'speaker' || data.type === 'switch' ? "Off" : (data.type === 'thermostat' ? "20°C" : "N/A"),
+      const newDevice: Device = {
+        ...data,
+        id: String(Date.now()),
+        status: data.type === 'light' || data.type === 'speaker' || data.type === 'switch' || data.type === 'fan' || data.type === 'tv' ? "Off" : (data.type === 'thermostat' ? "20°C" : (data.type === 'blinds' ? "Closed" : "N/A")),
         icon: deviceIconMap[data.type] || Palette,
         dataAiHint: data.type,
         ...(data.type === 'light' && { brightness: 50 }),
@@ -114,7 +114,7 @@ export default function DevicesPage() {
     setIsModalOpen(false);
     reset();
   };
-  
+
   const handleDeviceControlChange = (deviceId: string, controlType: "brightness" | "volume" | "status" | "color", value: any) => {
      setDevices(prev => prev.map(d => {
         if (d.id === deviceId) {
@@ -205,10 +205,10 @@ export default function DevicesPage() {
             </div>
           ) : (
             <div className="text-center py-12">
-              <Speaker className="mx-auto h-12 w-12 text-muted-foreground" />
+              <Smartphone className="mx-auto h-12 w-12 text-muted-foreground" />
               <h3 className="mt-2 text-xl font-semibold">No Devices Found</h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                Try adjusting your filters or add your first smart device.
+                Try adjusting your filters or click "Add New Device" to add your first smart device.
               </p>
               <Button className="mt-4" onClick={handleAddDevice}>
                 <PlusCircle className="mr-2 h-4 w-4" /> Add Device
@@ -229,7 +229,7 @@ export default function DevicesPage() {
           <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="name" className="text-right">Name</Label>
-              <Input id="name" {...register("name")} className="col-span-3" />
+              <Input id="name" {...register("name")} className="col-span-3" placeholder="e.g., Living Room Lamp"/>
               {errors.name && <p className="col-span-4 text-right text-destructive text-xs">{errors.name.message}</p>}
             </div>
             <div className="grid grid-cols-4 items-center gap-4">

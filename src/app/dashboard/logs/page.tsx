@@ -63,13 +63,14 @@ export default function LogsPage() {
     const logsToFilter: LogEntry[] = currentTab === 'activity' ? activityLogsData : systemLogsData;
     let filtered = logsToFilter.filter(log => {
       const searchLower = searchTerm.toLowerCase();
-      const matchesSearch = searchTerm === "" || 
-                            log.message?.toLowerCase().includes(searchLower) || 
+      const matchesSearch = searchTerm === "" ||
+                            log.message?.toLowerCase().includes(searchLower) ||
                             log.event?.toLowerCase().includes(searchLower) ||
-                            log.details?.toLowerCase().includes(searchLower);
+                            log.details?.toLowerCase().includes(searchLower) ||
+                            log.source?.toLowerCase().includes(searchLower);
       const matchesLevel = filterLevel === "ALL" || (log.level && log.level === filterLevel);
       const matchesSource = filterSource === "ALL" || log.source === filterSource;
-      
+
       if (currentTab === 'activity') return matchesSearch && matchesSource;
       return matchesSearch && matchesLevel && matchesSource;
     });
@@ -80,7 +81,7 @@ export default function LogsPage() {
       return sortOrder === "newest" ? dateB - dateA : dateA - dateB;
     });
   }, [searchTerm, filterLevel, filterSource, sortOrder, currentTab]);
-  
+
   const currentLogSources = currentTab === 'activity' ? logSourcesActivity : logSourcesSystem;
 
 
@@ -100,9 +101,9 @@ export default function LogsPage() {
         <CardContent className="space-y-4 md:space-y-0 md:flex md:flex-wrap md:items-center md:gap-4">
             <div className="flex items-center gap-2 flex-1 min-w-[200px]">
                 <Search className="h-5 w-5 text-muted-foreground" />
-                <Input 
-                    placeholder="Search logs..." 
-                    value={searchTerm} 
+                <Input
+                    placeholder="Search logs..."
+                    value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                 />
             </div>
@@ -149,7 +150,7 @@ export default function LogsPage() {
             <CardHeader>
               <CardTitle>{currentTab === 'activity' ? 'User & Device Activity' : 'System Performance & Errors'}</CardTitle>
               <CardDescription>
-                {currentTab === 'activity' 
+                {currentTab === 'activity'
                   ? 'Chronological record of actions and events initiated by you or your devices.'
                   : 'Technical logs related to WakeSync system operations and health.'}
               </CardDescription>
@@ -180,7 +181,8 @@ export default function LogsPage() {
                 ) : (
                   <div className="text-center py-10 text-muted-foreground">
                     <Search className="mx-auto h-10 w-10 mb-2"/>
-                    No logs found matching your criteria.
+                    <p>No logs found matching your criteria.</p>
+                    <p className="text-xs mt-1">Try adjusting your search or filter settings.</p>
                   </div>
                 )}
               </ScrollArea>
