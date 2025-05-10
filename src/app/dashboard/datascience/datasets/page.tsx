@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Database, UploadCloud, Eye, Trash2, FileJson, FileCsv } from "lucide-react";
+import { Database, UploadCloud, Eye, Trash2, FileJson, FileSpreadsheet } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
 
 interface MockDataset {
@@ -64,7 +64,7 @@ export default function DatasetsPage() {
   };
   
   const getFileIcon = (type: MockDataset['type']) => {
-    if (type === 'CSV') return <FileCsv className="h-5 w-5 text-green-600" />;
+    if (type === 'CSV') return <FileSpreadsheet className="h-5 w-5 text-green-600" />;
     if (type === 'JSON') return <FileJson className="h-5 w-5 text-amber-500" />;
     return <Database className="h-5 w-5 text-muted-foreground" />;
   };
