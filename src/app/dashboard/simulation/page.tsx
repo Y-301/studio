@@ -7,8 +7,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WakeUpSimulator } from "@/components/simulation/WakeUpSimulator";
 import { DeviceCard, type Device } from '@/components/devices/DeviceCard';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SlidersHorizontal, Zap, House, Eye, Edit, PlusSquare, Trash2, Maximize, ChevronsUpDown, Lightbulb, Thermometer, Speaker, LayoutPanelLeft, MapPin, Palette, GripVertical, Save, Loader2, Move, Plus } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { SlidersHorizontal, Zap, House, Eye, Edit, PlusSquare, Trash2, Maximize, ChevronsUpDown, Lightbulb, Thermometer, Speaker, LayoutPanelLeft, MapPin, Palette, GripVertical, Save, Loader2, Move, Plus, Maximize2, Minimize2 } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from '@/hooks/use-toast';
@@ -37,7 +37,7 @@ interface FloorPlanRoom {
   y: number; // Percentage
   width: number; // Percentage
   height: number; // Percentage
-  devices: string[];
+  devices: string[]; // IDs of devices in this room
 }
 
 interface FloorPlanDevice {
@@ -85,6 +85,7 @@ interface DraggingInfo {
   elementHeightPercent: number;
 }
 
+type ResizeHandleType = 'n' | 's' | 'e' | 'w' | 'nw' | 'ne' | 'sw' | 'se';
 interface ResizingInfo {
   id: string; // Room ID
   initialXPercent: number;
@@ -93,10 +94,11 @@ interface ResizingInfo {
   initialHeightPercent: number;
   startMouseXPercent: number;
   startMouseYPercent: number;
+  activeHandle: ResizeHandleType;
 }
 
 const MIN_ROOM_SIZE_PERCENT = 10;
-const DEVICE_ICON_SIZE_PERCENT = 5;
+const DEVICE_ICON_CONTAINER_SIZE_PERCENT = 7; // Slightly larger for better icon visibility
 
 
 export default function SimulationPage() {
@@ -137,27 +139,29 @@ export default function SimulationPage() {
         const hydratedDevices = data.placedDevices.map(apiDevice => {
           const fullDevice = mockSimDevices.find(d => d.id === apiDevice.id);
           return {
-            ...apiDevice,
+            id: apiDevice.id,
             name: fullDevice?.name || 'Unknown Device',
             icon: fullDevice?.icon || Palette,
+            x: apiDevice.x,
+            y: apiDevice.y,
+            width: apiDevice.width || DEVICE_ICON_CONTAINER_SIZE_PERCENT,
+            height: apiDevice.height || DEVICE_ICON_CONTAINER_SIZE_PERCENT,
           };
         });
         setFloorPlanDevices(hydratedDevices);
         setSelectedFloor(data.selectedFloor || initialMockFloors[0]);
-        // If loaded floor is not in initial mock floors, add it (for demo persistence)
-        if (data.selectedFloor && !availableFloors.includes(data.selectedFloor)) {
+        if (data.selectedFloor && !initialMockFloors.includes(data.selectedFloor) && !availableFloors.includes(data.selectedFloor)) {
           setAvailableFloors(prev => [...prev, data.selectedFloor]);
         }
         toast({ title: "Floor plan loaded", description: "Retrieved existing floor plan."});
       } catch (error) {
         console.error("Error loading floor plan:", error);
         toast({ title: "Error Loading Plan", description: (error as Error).message, variant: "destructive" });
-        // Set default if loading fails
         setFloorPlanRooms([
           { id: "fp-lr-default", name: "Living Room (Default)", x: 10, y: 10, width: 35, height: 30, devices: ["sim-light-1"]},
         ]);
         setFloorPlanDevices([
-          {id: "sim-light-1", name: "LR Light", icon: Lightbulb, x: 15, y: 15, width: DEVICE_ICON_SIZE_PERCENT, height: DEVICE_ICON_SIZE_PERCENT},
+          {id: "sim-light-1", name: "LR Light", icon: Lightbulb, x: 15, y: 15, width: DEVICE_ICON_CONTAINER_SIZE_PERCENT, height: DEVICE_ICON_CONTAINER_SIZE_PERCENT},
         ]);
       } finally {
         setIsLoadingPlan(false);
@@ -165,15 +169,17 @@ export default function SimulationPage() {
     };
     loadPlan();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Removed toast from dependencies to avoid re-fetch on toast change
+  }, []);
 
   const handleAddFloor = () => {
     if (newFloorNameInput.trim() && !availableFloors.includes(newFloorNameInput.trim())) {
       const newFloor = newFloorNameInput.trim();
       setAvailableFloors(prev => [...prev, newFloor]);
-      setSelectedFloor(newFloor); // Select the new floor
+      setSelectedFloor(newFloor);
+      setFloorPlanRooms([]); // Clear rooms for new floor
+      setFloorPlanDevices([]); // Clear devices for new floor
       setNewFloorNameInput("");
-      toast({ title: "Floor Added (Client-side)", description: `${newFloor} added to the list. Save plan to persist floor choice.` });
+      toast({ title: "Floor Added (Client-side)", description: `${newFloor} added. Save plan to persist.` });
     } else if (availableFloors.includes(newFloorNameInput.trim())) {
       toast({ title: "Floor Exists", description: "This floor name already exists.", variant: "default" });
     } else {
@@ -196,7 +202,7 @@ export default function SimulationPage() {
       const dataToSave: FloorPlanDataFromAPI = {
         rooms: floorPlanRooms,
         placedDevices: apiPlacedDevices,
-        selectedFloor: selectedFloor, // Save the currently selected floor
+        selectedFloor: selectedFloor,
       };
 
       const response = await fetch('/api/simulation/floorplan', {
@@ -231,10 +237,10 @@ export default function SimulationPage() {
     const newRoom: FloorPlanRoom = {
         id: `fp-room-${Date.now()}`,
         name: newRoomName,
-        x: Math.random() * 50 + 5,
-        y: Math.random() * 50 + 5,
-        width: Math.random() * 15 + MIN_ROOM_SIZE_PERCENT,
-        height: Math.random() * 10 + MIN_ROOM_SIZE_PERCENT,
+        x: 10,
+        y: 10,
+        width: 20,
+        height: 20,
         devices: [],
     };
     setFloorPlanRooms(prev => [...prev, newRoom]);
@@ -261,10 +267,10 @@ export default function SimulationPage() {
         id: device.id,
         name: device.name,
         icon: device.icon,
-        x: Math.random() * 70 + 5,
-        y: Math.random() * 70 + 5,
-        width: DEVICE_ICON_SIZE_PERCENT,
-        height: DEVICE_ICON_SIZE_PERCENT,
+        x: 15, // Default position
+        y: 15,
+        width: DEVICE_ICON_CONTAINER_SIZE_PERCENT,
+        height: DEVICE_ICON_CONTAINER_SIZE_PERCENT,
     };
     setFloorPlanDevices(prev => [...prev, newFPDevice]);
     toast({ title: "Device Added to Plan", description: `${device.name} added.` });
@@ -273,19 +279,10 @@ export default function SimulationPage() {
   };
 
   const handleDeviceControlChange = (deviceId: string, controlType: "brightness" | "volume" | "status", value: any) => {
-    const deviceIndex = mockSimDevices.findIndex(d => d.id === deviceId);
-    if (deviceIndex !== -1) {
-        let statusMessage = `${mockSimDevices[deviceIndex].name} ${controlType} set to ${value}`;
-        if (controlType === "status") {
-             statusMessage = `${mockSimDevices[deviceIndex].name} turned ${value ? "On" : "Off"}`;
-        }
-        toast({ title: "Device Control (List Demo)", description: statusMessage });
-    }
+    toast({ title: "Device Control (List Demo)", description: `Control ${deviceId} ${controlType} to ${value}`});
   };
 
    const handleDeviceSimulationControl = (deviceId: string, controlType: "brightness" | "volume" | "status", value: any) => {
-    // This function simulates control. In a real app, mockSimDevices would be stateful.
-    // For demo, we'll just log and toast. DeviceCard itself might update locally if prop is passed.
     const device = mockSimDevices.find(d => d.id === deviceId);
     if (device) {
       console.log(`Sim: ${device.name} ${controlType} changed to ${value}. (Visual effect only)`);
@@ -329,7 +326,7 @@ export default function SimulationPage() {
     });
   };
 
-  const handleResizeMouseDown = (e: React.MouseEvent, roomId: string) => {
+  const handleResizeMouseDown = (e: React.MouseEvent, roomId: string, handle: ResizeHandleType) => {
     if (!editMode || !floorPlanRef.current) return;
     e.preventDefault();
     e.stopPropagation();
@@ -345,6 +342,7 @@ export default function SimulationPage() {
       initialHeightPercent: room.height,
       startMouseXPercent: (e.clientX - containerRect.left) / containerRect.width * 100,
       startMouseYPercent: (e.clientY - containerRect.top) / containerRect.height * 100,
+      activeHandle: handle,
     });
   };
 
@@ -378,13 +376,67 @@ export default function SimulationPage() {
         const room = floorPlanRooms.find(r => r.id === resizingRoomInfo.id);
         if (!room) return;
 
-        let newWidth = resizingRoomInfo.initialWidthPercent + (mouseXPercent - resizingRoomInfo.startMouseXPercent);
-        let newHeight = resizingRoomInfo.initialHeightPercent + (mouseYPercent - resizingRoomInfo.startMouseYPercent);
+        const deltaX = mouseXPercent - resizingRoomInfo.startMouseXPercent;
+        const deltaY = mouseYPercent - resizingRoomInfo.startMouseYPercent;
 
-        newWidth = Math.max(MIN_ROOM_SIZE_PERCENT, Math.min(newWidth, 100 - resizingRoomInfo.initialXPercent));
-        newHeight = Math.max(MIN_ROOM_SIZE_PERCENT, Math.min(newHeight, 100 - resizingRoomInfo.initialYPercent));
+        let newX = room.x;
+        let newY = room.y;
+        let newWidth = room.width;
+        let newHeight = room.height;
 
-        const updatedRoom: FloorPlanRoom = { ...room, width: newWidth, height: newHeight };
+        switch (resizingRoomInfo.activeHandle) {
+          case 'n':
+            newY = resizingRoomInfo.initialYPercent + deltaY;
+            newHeight = resizingRoomInfo.initialHeightPercent - deltaY;
+            break;
+          case 's':
+            newHeight = resizingRoomInfo.initialHeightPercent + deltaY;
+            break;
+          case 'w':
+            newX = resizingRoomInfo.initialXPercent + deltaX;
+            newWidth = resizingRoomInfo.initialWidthPercent - deltaX;
+            break;
+          case 'e':
+            newWidth = resizingRoomInfo.initialWidthPercent + deltaX;
+            break;
+          case 'nw':
+            newX = resizingRoomInfo.initialXPercent + deltaX;
+            newY = resizingRoomInfo.initialYPercent + deltaY;
+            newWidth = resizingRoomInfo.initialWidthPercent - deltaX;
+            newHeight = resizingRoomInfo.initialHeightPercent - deltaY;
+            break;
+          case 'ne':
+            newY = resizingRoomInfo.initialYPercent + deltaY;
+            newWidth = resizingRoomInfo.initialWidthPercent + deltaX;
+            newHeight = resizingRoomInfo.initialHeightPercent - deltaY;
+            break;
+          case 'sw':
+            newX = resizingRoomInfo.initialXPercent + deltaX;
+            newWidth = resizingRoomInfo.initialWidthPercent - deltaX;
+            newHeight = resizingRoomInfo.initialHeightPercent + deltaY;
+            break;
+          case 'se':
+            newWidth = resizingRoomInfo.initialWidthPercent + deltaX;
+            newHeight = resizingRoomInfo.initialHeightPercent + deltaY;
+            break;
+        }
+        
+        // Boundary and size checks
+        if (newWidth < MIN_ROOM_SIZE_PERCENT) {
+            if (resizingRoomInfo.activeHandle.includes('w')) newX = room.x + room.width - MIN_ROOM_SIZE_PERCENT;
+            newWidth = MIN_ROOM_SIZE_PERCENT;
+        }
+        if (newHeight < MIN_ROOM_SIZE_PERCENT) {
+            if (resizingRoomInfo.activeHandle.includes('n')) newY = room.y + room.height - MIN_ROOM_SIZE_PERCENT;
+            newHeight = MIN_ROOM_SIZE_PERCENT;
+        }
+
+        newX = Math.max(0, newX);
+        newY = Math.max(0, newY);
+        if (newX + newWidth > 100) newWidth = 100 - newX;
+        if (newY + newHeight > 100) newHeight = 100 - newY;
+        
+        const updatedRoom: FloorPlanRoom = { ...room, x: newX, y: newY, width: newWidth, height: newHeight };
 
         if (!checkRoomCollision(updatedRoom, floorPlanRooms.filter(r => r.id !== resizingRoomInfo.id))) {
             setFloorPlanRooms(prev => prev.map(r => r.id === resizingRoomInfo.id ? updatedRoom : r));
@@ -404,6 +456,24 @@ export default function SimulationPage() {
       window.removeEventListener('mouseup', handleWindowMouseUp);
     };
   }, [draggingElementInfo, resizingRoomInfo, floorPlanRooms, floorPlanDevices, editMode]);
+
+
+  const resizeHandles: ResizeHandleType[] = ['n', 's', 'e', 'w', 'nw', 'ne', 'sw', 'se'];
+  const getResizeHandleStyle = (handle: ResizeHandleType): React.CSSProperties => {
+    const size = '8px';
+    const offset = '-4px';
+    switch (handle) {
+      case 'n': return { top: offset, left: '50%', transform: 'translateX(-50%)', cursor: 'ns-resize', width: 'calc(100% - 16px)', height: size, marginLeft: '8px', marginRight: '8px' };
+      case 's': return { bottom: offset, left: '50%', transform: 'translateX(-50%)', cursor: 'ns-resize', width: 'calc(100% - 16px)', height: size, marginLeft: '8px', marginRight: '8px' };
+      case 'w': return { left: offset, top: '50%', transform: 'translateY(-50%)', cursor: 'ew-resize', width: size, height: 'calc(100% - 16px)', marginTop: '8px', marginBottom: '8px'  };
+      case 'e': return { right: offset, top: '50%', transform: 'translateY(-50%)', cursor: 'ew-resize', width: size, height: 'calc(100% - 16px)', marginTop: '8px', marginBottom: '8px' };
+      case 'nw': return { top: offset, left: offset, cursor: 'nwse-resize', width: size, height: size };
+      case 'ne': return { top: offset, right: offset, cursor: 'nesw-resize', width: size, height: size };
+      case 'sw': return { bottom: offset, left: offset, cursor: 'nesw-resize', width: size, height: size };
+      case 'se': return { bottom: offset, right: offset, cursor: 'nwse-resize', width: size, height: size };
+      default: return {};
+    }
+  };
 
 
   if (isLoadingPlan) {
@@ -431,7 +501,7 @@ export default function SimulationPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <House className="h-6 w-6 text-primary" />
-            House Floor Plan Simulation
+            House Floor Plan ({selectedFloor})
           </CardTitle>
           <CardDescription>
             {editMode ? "Edit your floor plan: add, move, resize rooms and place devices." : "View your current home layout and device placements."}
@@ -440,12 +510,12 @@ export default function SimulationPage() {
         <CardContent>
           <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-2">
             <div className="flex gap-2 flex-wrap items-center">
-              <Button onClick={() => setEditMode(!editMode)} variant={editMode ? "default" : "outline"}>
+              <Button onClick={() => setEditMode(!editMode)} variant={editMode ? "default" : "outline"} className="shadow-sm">
                 {editMode ? <Eye className="mr-2 h-4 w-4" /> : <Edit className="mr-2 h-4 w-4" />}
                 {editMode ? "View Mode" : "Edit Mode"}
               </Button>
-              <Select value={selectedFloor} onValueChange={setSelectedFloor}>
-                <SelectTrigger className="w-full sm:w-[180px]">
+              <Select value={selectedFloor} onValueChange={(newFloor) => { setSelectedFloor(newFloor); setFloorPlanRooms([]); setFloorPlanDevices([]); /* TODO: Load plan for newFloor */ }}>
+                <SelectTrigger className="w-full sm:w-[180px] shadow-sm">
                   <SelectValue placeholder="Select floor" />
                 </SelectTrigger>
                 <SelectContent>
@@ -459,9 +529,9 @@ export default function SimulationPage() {
                     placeholder="New floor name" 
                     value={newFloorNameInput} 
                     onChange={(e) => setNewFloorNameInput(e.target.value)}
-                    className="h-9 text-xs w-[120px]"
+                    className="h-9 text-xs w-[120px] shadow-sm"
                   />
-                  <Button variant="outline" size="icon" className="h-9 w-9" onClick={handleAddFloor} title="Add new floor">
+                  <Button variant="outline" size="icon" className="h-9 w-9 shadow-sm" onClick={handleAddFloor} title="Add new floor">
                     <Plus className="h-4 w-4"/>
                   </Button>
                 </div>
@@ -469,9 +539,9 @@ export default function SimulationPage() {
             </div>
             {editMode && (
               <div className="flex gap-2 mt-2 sm:mt-0 flex-wrap">
-                <Button variant="outline" size="sm" onClick={() => setIsAddRoomModalOpen(true)}><PlusSquare className="mr-2 h-4 w-4" /> Add Room</Button>
-                <Button variant="outline" size="sm" onClick={() => setIsAddDeviceModalOpen(true)}><Maximize className="mr-2 h-4 w-4" /> Add Device</Button>
-                <Button variant="default" size="sm" onClick={handleSavePlan} disabled={isSavingPlan}>
+                <Button variant="outline" size="sm" onClick={() => setIsAddRoomModalOpen(true)} className="shadow-sm"><PlusSquare className="mr-2 h-4 w-4" /> Add Room</Button>
+                <Button variant="outline" size="sm" onClick={() => setIsAddDeviceModalOpen(true)} className="shadow-sm"><Maximize className="mr-2 h-4 w-4" /> Add Device</Button>
+                <Button variant="default" size="sm" onClick={handleSavePlan} disabled={isSavingPlan} className="shadow-md">
                   {isSavingPlan ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                   Save Plan
                 </Button>
@@ -483,9 +553,9 @@ export default function SimulationPage() {
             id="floor-plan-container"
             ref={floorPlanRef}
             className={cn(
-                "relative w-full h-[400px] md:h-[500px] bg-muted/30 border-2 border-border rounded-lg flex items-center justify-center overflow-hidden p-2 shadow-inner",
-                editMode && "border-dashed border-primary/50 cursor-grab",
-                (draggingElementInfo || resizingRoomInfo) && "cursor-grabbing"
+                "relative w-full h-[400px] md:h-[500px] bg-muted/30 border-2 border-border rounded-lg flex items-center justify-center overflow-hidden p-2 shadow-inner select-none",
+                editMode && "border-dashed border-primary/50", // Removed cursor-grab globally
+                (draggingElementInfo || resizingRoomInfo) && "cursor-grabbing" // Apply grabbing cursor only during operation
             )}
             style={{
                  backgroundImage: editMode ? 'linear-gradient(hsl(var(--border)/0.3) 1px, transparent 1px), linear-gradient(to right, hsl(var(--border)/0.3) 1px, transparent 1px)' : 'none',
@@ -502,10 +572,11 @@ export default function SimulationPage() {
             {floorPlanRooms.map(room => (
                 <div key={room.id}
                     className={cn(
-                        "absolute bg-primary/20 border border-primary rounded p-1 text-xs text-primary-foreground flex items-center justify-center shadow-md",
-                        editMode && "cursor-grab hover:border-primary/80 hover:bg-primary/30 transition-all",
-                        draggingElementInfo?.id === room.id && "opacity-70 ring-2 ring-primary z-10 shadow-lg",
-                        resizingRoomInfo?.id === room.id && "opacity-70 ring-2 ring-accent z-10 shadow-lg"
+                        "absolute bg-primary/20 border border-primary rounded p-1 text-xs text-primary-foreground flex items-center justify-center shadow-md transition-all duration-100",
+                        editMode && "hover:border-primary/80 hover:bg-primary/30",
+                        draggingElementInfo?.id === room.id && "opacity-70 ring-2 ring-primary z-10 shadow-xl cursor-grabbing",
+                        resizingRoomInfo?.id === room.id && "opacity-70 ring-2 ring-accent z-10 shadow-xl",
+                        !draggingElementInfo && !resizingRoomInfo && editMode && "cursor-grab"
                     )}
                     style={{
                         left: `${room.x}%`, top: `${room.y}%`,
@@ -513,26 +584,23 @@ export default function SimulationPage() {
                     }}
                     onMouseDown={(e) => handleMouseDownShared(e, room.id, 'room')}
                 >
-                    <span className="truncate pointer-events-none">{room.name}</span>
+                    <span className="truncate pointer-events-none select-none">{room.name}</span>
                     {editMode && (
                         <>
                           <Tooltip>
                             <TooltipTrigger asChild>
-                               <Button variant="ghost" size="icon" className="absolute -top-2 -right-2 h-5 w-5 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-0.5 z-20 shadow" onClick={(e) => { e.stopPropagation(); setFloorPlanRooms(prev => prev.filter(r => r.id !== room.id)); toast({title:"Room Removed", description: `${room.name} removed from plan.`})}}><Trash2 className="h-3 w-3"/></Button>
+                               <Button variant="ghost" size="icon" className="absolute -top-2 -right-2 h-5 w-5 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-0.5 z-20 shadow cursor-pointer" onClick={(e) => { e.stopPropagation(); setFloorPlanRooms(prev => prev.filter(r => r.id !== room.id)); toast({title:"Room Removed", description: `${room.name} removed from plan.`})}}><Trash2 className="h-3 w-3"/></Button>
                             </TooltipTrigger>
                             <TooltipContent><p>Delete {room.name}</p></TooltipContent>
                           </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                                <div
-                                    className="absolute bottom-0 right-0 w-3 h-3 bg-accent rounded-sm cursor-se-resize border-2 border-background z-20 hover:scale-125 transition-transform shadow flex items-center justify-center"
-                                    onMouseDown={(e) => handleResizeMouseDown(e, room.id)}
-                                >
-                                  <Move className="w-2 h-2 text-accent-foreground opacity-75" />
-                                </div>
-                            </TooltipTrigger>
-                            <TooltipContent><p>Resize {room.name}</p></TooltipContent>
-                          </Tooltip>
+                          {resizeHandles.map(handle => (
+                            <div
+                              key={handle}
+                              className="absolute bg-accent/50 hover:bg-accent border border-background rounded-sm z-20"
+                              style={getResizeHandleStyle(handle)}
+                              onMouseDown={(e) => handleResizeMouseDown(e, room.id, handle)}
+                            />
+                          ))}
                         </>
                     )}
                 </div>
@@ -542,20 +610,23 @@ export default function SimulationPage() {
                 return (
                     <div key={device.id}
                         className={cn(
-                            "absolute flex flex-col items-center justify-center text-center p-1 bg-accent/30 border border-accent rounded-md shadow-sm z-5",
-                            editMode && "cursor-grab hover:border-accent/80 hover:bg-accent/40 transition-all",
-                            draggingElementInfo?.id === device.id && "opacity-70 ring-2 ring-accent z-10 shadow-lg"
+                            "absolute flex flex-col items-center justify-center text-center group", // Removed padding, border, bg from container
+                            editMode && "hover:ring-2 hover:ring-accent/50 rounded-md",
+                            draggingElementInfo?.id === device.id && "opacity-70 ring-2 ring-accent z-10 shadow-lg cursor-grabbing",
+                            !draggingElementInfo && !resizingRoomInfo && editMode && "cursor-grab"
                         )}
                          style={{ left: `${device.x}%`, top: `${device.y}%`, width: `${device.width}%`, height: `${device.height}%`}}
                          title={device.name}
                          onMouseDown={(e) => handleMouseDownShared(e, device.id, 'device')}
                     >
-                        <DeviceIconComponent className="h-3/5 w-3/5 text-accent-foreground pointer-events-none"/>
-                        <span className="text-[8px] md:text-[10px] text-accent-foreground truncate max-w-full block leading-tight pointer-events-none mt-0.5">{device.name.split(" ")[0]}</span>
+                        <DeviceIconComponent className="w-full h-full text-primary p-0.5 pointer-events-none select-none"/>
+                        <span className="absolute -bottom-3 text-[9px] text-muted-foreground truncate max-w-full block leading-tight pointer-events-none select-none opacity-0 group-hover:opacity-100 transition-opacity">
+                            {device.name.split(" ")[0]}
+                        </span>
                         {editMode &&
                           <Tooltip>
                             <TooltipTrigger asChild>
-                               <Button variant="ghost" size="icon" className="absolute -top-1 -right-1 h-4 w-4 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-0.5 z-20 shadow" onClick={(e) => { e.stopPropagation(); setFloorPlanDevices(prev => prev.filter(d => d.id !== device.id)); toast({title:"Device Removed from Plan", description: `${device.name} removed.`})}}><Trash2 className="h-2 w-2"/></Button>
+                               <Button variant="ghost" size="icon" className="absolute -top-1 -right-1 h-4 w-4 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-0.5 z-20 shadow cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); setFloorPlanDevices(prev => prev.filter(d => d.id !== device.id)); toast({title:"Device Removed from Plan", description: `${device.name} removed.`})}}><Trash2 className="h-2 w-2"/></Button>
                             </TooltipTrigger>
                             <TooltipContent><p>Remove {device.name}</p></TooltipContent>
                           </Tooltip>
@@ -564,7 +635,7 @@ export default function SimulationPage() {
                 );
             })}
             {editMode && !draggingElementInfo && !resizingRoomInfo && (
-                <p className="absolute bottom-2 left-2 text-xs text-muted-foreground bg-background/80 p-1 rounded shadow">Edit Mode: Drag rooms/devices. Resize rooms using bottom-right handle.</p>
+                <p className="absolute bottom-2 left-2 text-xs text-muted-foreground bg-background/80 p-1 rounded shadow">Edit Mode: Drag rooms/devices. Resize rooms using handles.</p>
             )}
              {(draggingElementInfo || resizingRoomInfo) && (
                  <p className="absolute bottom-2 left-2 text-xs text-primary bg-background/80 p-1 rounded font-semibold animate-pulse shadow">
@@ -575,7 +646,6 @@ export default function SimulationPage() {
         </CardContent>
       </Card>
 
-      {/* Add Room Modal */}
       <Dialog open={isAddRoomModalOpen} onOpenChange={setIsAddRoomModalOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>Add New Room to Plan</DialogTitle><DialogDescription>Enter the name for the new room.</DialogDescription></DialogHeader>
@@ -590,7 +660,6 @@ export default function SimulationPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Add Device to Plan Modal */}
       <Dialog open={isAddDeviceModalOpen} onOpenChange={setIsAddDeviceModalOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>Add Device to Floor Plan</DialogTitle><DialogDescription>Select an existing device to place on the plan.</DialogDescription></DialogHeader>
@@ -670,3 +739,4 @@ export default function SimulationPage() {
     </TooltipProvider>
   );
 }
+
