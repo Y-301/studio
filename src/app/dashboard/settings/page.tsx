@@ -12,7 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { UserCircle, Bell, ShieldCheck, Palette, CreditCard, SlidersHorizontal } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { UserCircle, Bell, ShieldCheck, CreditCard, SlidersHorizontal, Link as LinkIcon, AlertTriangle, Trash2 } from "lucide-react"; // Added LinkIcon, AlertTriangle, Trash2
 import { useToast } from "@/hooks/use-toast";
 import React from "react";
 
@@ -46,7 +47,7 @@ export default function SettingsPage() {
   const preferencesForm = useForm<z.infer<typeof preferencesFormSchema>>({
     resolver: zodResolver(preferencesFormSchema),
     defaultValues: {
-      darkMode: false, // This would ideally sync with ThemeToggle in layout
+      darkMode: false, 
       notifications: {
         email: true,
         push: true,
@@ -64,7 +65,8 @@ export default function SettingsPage() {
     console.log("Preferences updated:", values);
     toast({ title: "Preferences Updated", description: "Your app preferences have been saved." });
     if (typeof window !== 'undefined') {
-      if (values.darkMode) {
+      const newIsDarkMode = values.darkMode;
+      if (newIsDarkMode) {
         document.documentElement.classList.add('dark');
         localStorage.setItem('theme', 'dark');
       } else {
@@ -74,13 +76,25 @@ export default function SettingsPage() {
     }
   }
   
-  // Sync darkMode initial state from localStorage
-  // This is a simplified version. A full theme provider context would be better.
   React.useEffect(() => {
     const isDarkMode = localStorage.getItem('theme') === 'dark' || 
-                       (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches);
+                       (!('theme' in localStorage) && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
     preferencesForm.setValue('darkMode', isDarkMode);
   }, [preferencesForm]);
+
+  const handleDeleteAccount = () => {
+    // TODO: Implement actual account deletion logic
+    console.log("Account deletion requested");
+    toast({
+        title: "Account Deletion Initiated",
+        description: "Your account deletion request has been processed. (This is a demo)",
+        variant: "destructive"
+    });
+     // For demo, redirect to signup
+     if (typeof window !== 'undefined') {
+        setTimeout(() => window.location.href = '/auth/signup', 2000);
+     }
+  };
 
 
   return (
@@ -93,10 +107,11 @@ export default function SettingsPage() {
       </div>
 
       <Tabs defaultValue="profile" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 lg:grid-cols-5 mb-6">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 lg:grid-cols-6 mb-6">
           <TabsTrigger value="profile"><UserCircle className="mr-2 h-4 w-4 inline-block" />Profile</TabsTrigger>
           <TabsTrigger value="preferences"><SlidersHorizontal className="mr-2 h-4 w-4 inline-block" />Preferences</TabsTrigger>
           <TabsTrigger value="notifications"><Bell className="mr-2 h-4 w-4 inline-block" />Notifications</TabsTrigger>
+          <TabsTrigger value="integrations"><LinkIcon className="mr-2 h-4 w-4 inline-block" />Integrations</TabsTrigger>
           <TabsTrigger value="security"><ShieldCheck className="mr-2 h-4 w-4 inline-block" />Security</TabsTrigger>
           <TabsTrigger value="billing" id="billing"><CreditCard className="mr-2 h-4 w-4 inline-block" />Billing</TabsTrigger>
         </TabsList>
@@ -112,7 +127,7 @@ export default function SettingsPage() {
                 <form onSubmit={profileForm.handleSubmit(onProfileSubmit)} className="space-y-6">
                   <div className="flex items-center space-x-4 mb-6">
                     <Avatar className="h-20 w-20">
-                      {/* <AvatarImage src="https://picsum.photos/seed/avatar/200/200" alt="User Avatar" data-ai-hint="person avatar" /> */}
+                       <AvatarImage src="https://picsum.photos/seed/avatar-settings/200/200" alt="User Avatar" data-ai-hint="person avatar" />
                       <AvatarFallback><UserCircle size={40}/></AvatarFallback>
                     </Avatar>
                     <Button variant="outline" type="button">Change Avatar</Button>
@@ -137,9 +152,9 @@ export default function SettingsPage() {
                       <FormItem>
                         <FormLabel>Email Address</FormLabel>
                         <FormControl>
-                          <Input type="email" placeholder="your@email.com" {...field} />
+                          <Input type="email" placeholder="your@email.com" {...field} disabled />
                         </FormControl>
-                         <FormDescription>This is the email for login and notifications.</FormDescription>
+                         <FormDescription>This is the email for login and notifications. It cannot be changed here.</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -193,7 +208,7 @@ export default function SettingsPage() {
                         <div className="space-y-0.5">
                           <FormLabel className="text-base">Dark Mode</FormLabel>
                           <FormDescription>
-                            Enable dark theme for the application.
+                            Enable dark theme for the application. (Syncs with global theme toggle)
                           </FormDescription>
                         </div>
                         <FormControl>
@@ -221,6 +236,7 @@ export default function SettingsPage() {
                             <SelectItem value="nature_sounds">Nature Sounds</SelectItem>
                             <SelectItem value="gentle_flute">Gentle Flute</SelectItem>
                             <SelectItem value="ocean_waves">Ocean Waves</SelectItem>
+                            <SelectItem value="birds_chirping">Birds Chirping</SelectItem>
                             <SelectItem value="none">None (Silent)</SelectItem>
                           </SelectContent>
                         </Select>
@@ -242,7 +258,7 @@ export default function SettingsPage() {
               <CardDescription>Manage how you receive alerts and updates.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-                 <Form {...preferencesForm}> {/* Re-using part of preferences form for notifications */}
+                 <Form {...preferencesForm}> 
                     <form onSubmit={preferencesForm.handleSubmit(onPreferencesSubmit)} className="space-y-6">
                         <FormField
                             control={preferencesForm.control}
@@ -270,9 +286,9 @@ export default function SettingsPage() {
                             render={({ field }) => (
                             <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
                                 <div className="space-y-0.5">
-                                <FormLabel className="text-base">Push Notifications</FormLabel>
+                                <FormLabel className="text-base">In-App Notifications</FormLabel>
                                 <FormDescription>
-                                    Get real-time alerts on your mobile device.
+                                    Get real-time alerts within the WakeSync app.
                                 </FormDescription>
                                 </div>
                                 <FormControl>
@@ -287,6 +303,53 @@ export default function SettingsPage() {
                         <Button type="submit">Save Notification Settings</Button>
                     </form>
                  </Form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="integrations">
+          <Card>
+            <CardHeader>
+              <CardTitle>Connected Accounts & Integrations</CardTitle>
+              <CardDescription>Link WakeSync with other services for an enhanced experience.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <Card className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <img src="https://picsum.photos/seed/google-fit-logo/40/40" alt="Google Fit Logo" className="h-8 w-8 rounded-full" data-ai-hint="Google Fit logo" />
+                    <div>
+                      <h4 className="font-medium">Google Fit</h4>
+                      <p className="text-xs text-muted-foreground">Sync sleep, activity, and heart rate data.</p>
+                    </div>
+                  </div>
+                  <Button variant="outline">Connect</Button>
+                </div>
+              </Card>
+              <Card className="p-4">
+                 <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <img src="https://picsum.photos/seed/apple-health-logo/40/40" alt="Apple Health Logo" className="h-8 w-8 rounded-full" data-ai-hint="Apple Health logo" />
+                        <div>
+                        <h4 className="font-medium">Apple Health</h4>
+                        <p className="text-xs text-muted-foreground">Import health data from your Apple devices.</p>
+                        </div>
+                    </div>
+                    <Button variant="outline" disabled>Connect (Coming Soon)</Button>
+                 </div>
+              </Card>
+               <Card className="p-4">
+                 <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <img src="https://picsum.photos/seed/spotify-logo/40/40" alt="Spotify Logo" className="h-8 w-8 rounded-full" data-ai-hint="Spotify logo" />
+                        <div>
+                        <h4 className="font-medium">Spotify</h4>
+                        <p className="text-xs text-muted-foreground">Use your Spotify playlists for wake-up sounds.</p>
+                        </div>
+                    </div>
+                    <Button variant="outline">Connect</Button>
+                 </div>
+              </Card>
             </CardContent>
           </Card>
         </TabsContent>
@@ -347,13 +410,42 @@ export default function SettingsPage() {
                  <div className="border-t pt-6">
                     <h3 className="text-md font-medium">Billing History</h3>
                      <p className="text-sm text-muted-foreground">No invoices yet. Your first invoice will appear here after your first billing cycle.</p>
-                    {/* Placeholder for invoice list */}
                 </div>
             </CardContent>
           </Card>
         </TabsContent>
-
       </Tabs>
+
+      {/* Danger Zone */}
+      <Card className="border-destructive">
+        <CardHeader>
+            <CardTitle className="text-destructive flex items-center gap-2"><AlertTriangle/>Danger Zone</CardTitle>
+            <CardDescription>These actions are permanent and cannot be undone.</CardDescription>
+        </CardHeader>
+        <CardContent>
+            <AlertDialog>
+                <AlertDialogTrigger asChild>
+                    <Button variant="destructive"><Trash2 className="mr-2 h-4 w-4"/>Delete Account</Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        This action cannot be undone. This will permanently delete your account
+                        and remove all your data from our servers.
+                    </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDeleteAccount} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
+                        Yes, delete my account
+                    </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+            <p className="text-xs text-muted-foreground mt-2">Deleting your account will remove all your settings, device configurations, routines, and historical data.</p>
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -3,7 +3,7 @@ import {
   LayoutDashboard, 
   Smartphone, 
   ListChecks, 
-  Waypoints, 
+  Waypoints, // For Simulation
   Watch, 
   BarChart3, 
   FileText, 
@@ -11,27 +11,26 @@ import {
   Database,
   Workflow,
   BrainCircuit,
-  ClipboardCheck
+  ClipboardCheck,
+  Link as LinkIcon // Added for Integrations
 } from 'lucide-react';
 
 export interface NavItem {
   title: string;
   href: string;
   icon: LucideIcon;
-  label?: string; // This can be used for badges or additional info if needed
+  label?: string; 
   disabled?: boolean;
   external?: boolean;
 }
 
 export interface NavItemGroup {
-  title?: string; // Optional title for the group
+  title?: string; 
   items: NavItem[];
 }
 
 export const dashboardNavItems: NavItemGroup[] = [
   {
-    // First group for existing items, no explicit title or a generic one like "Workspace"
-    // title: "Workspace", 
     items: [
       {
         title: 'Dashboard',
@@ -51,7 +50,7 @@ export const dashboardNavItems: NavItemGroup[] = [
       {
         title: 'Simulation',
         href: '/dashboard/simulation',
-        icon: Waypoints,
+        icon: Waypoints, // Using Waypoints as a more generic simulation icon
       },
       {
         title: 'Wristband',
@@ -72,6 +71,11 @@ export const dashboardNavItems: NavItemGroup[] = [
         title: 'Settings',
         href: '/dashboard/settings',
         icon: SettingsIcon,
+      },
+       { // Added for consistency with Settings page tabs
+        title: 'Integrations',
+        href: '/dashboard/settings#integrations', // Link to the integrations tab in settings
+        icon: LinkIcon,
       },
     ],
   },

@@ -28,17 +28,21 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Bell, LogOut, Moon, Sun, UserCircle, CreditCard, Settings } from 'lucide-react'; // Added CreditCard and Settings for consistency
+import { Bell, LogOut, Moon, Sun, UserCircle, CreditCard, Settings, Link as LinkIcon } from 'lucide-react'; 
 import { Logo } from '@/components/shared/Logo';
-import { dashboardNavItems, type NavItemGroup } from '@/config/dashboard-nav'; // Updated import type
+import { dashboardNavItems, type NavItemGroup } from '@/config/dashboard-nav'; 
 import { cn } from '@/lib/utils';
+import { Footer } from '@/components/layout/Footer'; // Import Footer
 
 // A simple theme toggle - for demonstration. 
 // In a real app, this would use context and persist theme.
 function ThemeToggle() {
   const [isDarkMode, setIsDarkMode] = React.useState(false);
+  const [mounted, setMounted] = React.useState(false);
+
 
   React.useEffect(() => {
+    setMounted(true);
     const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     const theme = localStorage.getItem('theme');
     if (theme === 'dark') {
@@ -67,6 +71,9 @@ function ThemeToggle() {
       localStorage.setItem('theme', 'light');
     }
   };
+  
+  if (!mounted) return <Button variant="ghost" size="icon" disabled className="h-5 w-5"></Button>;
+
 
   return (
     <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme">
@@ -97,7 +104,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     <SidebarMenuItem key={item.href}>
                       <Link href={item.href} legacyBehavior passHref>
                         <SidebarMenuButton
-                          isActive={pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/dashboard')}
+                          isActive={pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/dashboard' && !item.href.includes('#')) || (item.href.includes('#') && pathname === item.href.split('#')[0])}
                           tooltip={item.title}
                         >
                           <item.icon />
@@ -115,9 +122,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {/* Placeholder for any footer items in sidebar */}
         </SidebarFooter>
       </Sidebar>
-      <SidebarInset>
+      <SidebarInset className="flex flex-col min-h-screen"> {/* Ensure SidebarInset takes full height and is flex col */}
         <header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6">
-          <div className="md:hidden"> {/* Only show trigger on mobile */}
+          <div className="md:hidden"> 
              <SidebarTrigger />
           </div>
           <div className="flex-1">
@@ -132,7 +139,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                   <Avatar className="h-8 w-8">
-                    {/* <AvatarImage src="https://picsum.photos/seed/avatar/100/100" alt="User Avatar" data-ai-hint="person avatar" /> */}
+                    <AvatarImage src="https://picsum.photos/seed/user-avatar/100/100" alt="User Avatar" data-ai-hint="person avatar" />
                     <AvatarFallback>
                       <UserCircle />
                     </AvatarFallback>
@@ -154,6 +161,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     Billing
                   </Link>
                 </DropdownMenuItem>
+                 <DropdownMenuItem asChild>
+                  <Link href="/dashboard/settings#integrations" className="flex items-center w-full">
+                    <LinkIcon className="mr-2 h-4 w-4" />
+                    Integrations
+                  </Link>
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => {
@@ -170,6 +183,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </header>
         <main className="flex-1 p-4 md:p-6 lg:p-8">{children}</main>
+        <Footer /> {/* Add Footer here to make it sticky within the main content area */}
       </SidebarInset>
     </SidebarProvider>
   );
