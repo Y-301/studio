@@ -1,8 +1,9 @@
+
 import { PublicHeader } from '@/components/layout/PublicHeader';
 import { Footer } from '@/components/layout/Footer';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Watch, Sunrise, ListChecks } from 'lucide-react'; // Changed icons to match report context
+import { Watch, Sunrise, ListChecks } from 'lucide-react'; 
 import Link from 'next/link';
 
 const features = [
@@ -33,7 +34,7 @@ export default function HomePage() {
       <main className="flex-grow">
         {/* Hero Section */}
         <section 
-          className="py-20 md:py-32 bg-gradient-to-br from-primary/20 via-background to-background/80" // Adjusted hero gradient
+          className="py-20 md:py-32 bg-gradient-to-br from-primary/20 via-background to-background/80"
           style={{ '--hero-gradient-start': 'hsl(var(--primary) / 0.2)', '--hero-gradient-end': 'hsl(var(--background))' } as React.CSSProperties}
         >
           <div className="container mx-auto px-4 text-center">
@@ -48,11 +49,14 @@ export default function HomePage() {
                 <Link href="/dashboard">Try Demo Dashboard</Link>
               </Button>
               <Button size="lg" variant="outline" asChild>
-                <Link href="/#features">Learn More</Link>
+                <Link href="/learn-more">Learn More</Link>
               </Button>
             </div>
             <div className="mt-16">
-              <img src="https://picsum.photos/seed/dashboard-showcase/800/450" alt="WakeSync Dashboard Showcase" className="rounded-lg shadow-xl mx-auto" data-ai-hint="dashboard interface" />
+              {/* Updated to generic placeholder, actual image would be better */}
+              <div className="w-full max-w-3xl h-auto aspect-video bg-muted rounded-lg shadow-xl mx-auto flex items-center justify-center" data-ai-hint="dashboard interface">
+                <p className="text-muted-foreground">Dashboard Showcase Placeholder</p>
+              </div>
             </div>
           </div>
         </section>
@@ -71,16 +75,23 @@ export default function HomePage() {
                     <CardTitle className="mt-4 text-2xl">{feature.title}</CardTitle>
                   </CardHeader>
                   <CardContent className="flex-grow text-center">
-                    <img src={`https://picsum.photos/seed/${feature.title.toLowerCase().replace(/\s+/g, '-')}/300/200`} alt={feature.title} className="rounded-md mb-4 mx-auto" data-ai-hint={feature.dataAiHint}/>
+                     <div className="w-full h-48 bg-muted rounded-md mb-4 mx-auto flex items-center justify-center" data-ai-hint={feature.dataAiHint}>
+                       <p className="text-muted-foreground text-sm">Feature Visual: {feature.title}</p>
+                     </div>
                     <CardDescription className="text-base mt-4">{feature.description}</CardDescription>
                   </CardContent>
                 </Card>
               ))}
             </div>
+             <div className="text-center mt-12">
+              <Button size="lg" asChild>
+                <Link href="/features">Explore All Features</Link>
+              </Button>
+            </div>
           </div>
         </section>
 
-        {/* How It Works Section - Retained from previous, still relevant */}
+        {/* How It Works Section */}
         <section className="py-16 md:py-24">
           <div className="container mx-auto px-4">
             <h2 className="text-3xl md:text-4xl font-bold text-center text-foreground mb-16">

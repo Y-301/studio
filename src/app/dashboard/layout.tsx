@@ -31,58 +31,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Bell, LogOut, Moon, Sun, UserCircle, CreditCard, Settings, Link as LinkIcon, Loader2, LogIn } from 'lucide-react'; 
+import { Bell, LogOut, UserCircle, CreditCard, Settings, Link as LinkIcon, Loader2, LogIn } from 'lucide-react'; 
 import { Logo } from '@/components/shared/Logo';
 import { dashboardNavItems } from '@/config/dashboard-nav'; 
 import { cn } from '@/lib/utils';
 import { Footer } from '@/components/layout/Footer';
 import { useToast } from '@/hooks/use-toast';
-
-function ThemeToggle() {
-  const [isDarkMode, setIsDarkMode] = React.useState(false);
-  const [mounted, setMounted] = React.useState(false);
-
-  React.useEffect(() => {
-    setMounted(true);
-    const theme = localStorage.getItem('theme');
-    if (theme === 'dark') {
-      setIsDarkMode(true);
-      document.documentElement.classList.add('dark');
-    } else if (theme === 'light') {
-      setIsDarkMode(false);
-      document.documentElement.classList.remove('dark');
-    } else {
-      const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-      if (prefersDark) {
-        setIsDarkMode(true);
-        document.documentElement.classList.add('dark');
-      } else {
-        setIsDarkMode(false);
-        document.documentElement.classList.remove('dark');
-      }
-    }
-  }, []);
-
-  const toggleTheme = () => {
-    const newIsDarkMode = !isDarkMode;
-    setIsDarkMode(newIsDarkMode);
-    if (newIsDarkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
-  };
-  
-  if (!mounted) return <Button variant="ghost" size="icon" disabled className="h-5 w-5"></Button>;
-
-  return (
-    <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme">
-      {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-    </Button>
-  );
-}
+import { ThemeToggle } from '@/components/shared/ThemeToggle'; // Import the new ThemeToggle
 
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -98,8 +53,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         setCurrentUser(user);
       } else {
         setCurrentUser(null);
-        // Removed redirection to allow unauthenticated access
-        // router.push('/auth/login'); 
+        // router.push('/auth/login'); // Kept commented as per previous logic
       }
       setLoadingAuth(false);
     });
@@ -110,7 +64,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     try {
       await signOut(auth);
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
-      setCurrentUser(null); // Ensure currentUser state is updated
+      setCurrentUser(null); 
       router.push('/auth/login');
     } catch (error) {
       console.error("Logout error:", error);
@@ -126,9 +80,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
   
-  // No longer redirecting if !currentUser, dashboard is accessible to guests
-
-
   return (
     <SidebarProvider defaultOpen>
       <Sidebar collapsible="icon">
@@ -149,7 +100,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         <SidebarMenuButton
                           isActive={pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/dashboard' && !item.href.includes('#')) || (item.href.includes('#') && pathname === item.href.split('#')[0])}
                           tooltip={item.title}
-                          disabled={item.disabled && !currentUser} // Disable if item needs auth and user is guest
+                          disabled={item.disabled && !currentUser} 
                         >
                           <item.icon />
                           <span>{item.title}</span>
@@ -174,7 +125,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="flex-1">
             {/* Optional: Breadcrumbs or page title */}
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 md:gap-4">
             <ThemeToggle />
             <Button variant="ghost" size="icon" aria-label="Notifications">
               <Bell className="h-5 w-5" />
@@ -183,14 +134,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                   <Avatar className="h-8 w-8">
-                    <AvatarImage src={currentUser?.photoURL || `https://picsum.photos/seed/${currentUser?.uid || 'guest-avatar'}/100/100`} alt="User Avatar" data-ai-hint={currentUser ? "person avatar" : "guest avatar"} />
+                    <AvatarImage src={currentUser?.photoURL || undefined} alt={currentUser?.displayName || "User Avatar"} />
                     <AvatarFallback>
-                      {currentUser ? (currentUser.displayName ? currentUser.displayName.charAt(0).toUpperCase() : <UserCircle />) : <UserCircle />}
+                      {currentUser ? (currentUser.displayName ? currentUser.displayName.charAt(0).toUpperCase() : <UserCircle className="h-5 w-5"/>) : <UserCircle className="h-5 w-5" />}
                     </AvatarFallback>
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>{currentUser ? (currentUser.displayName || currentUser.email || "My Account") : "Guest"}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {currentUser ? (
@@ -216,7 +167,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={handleLogout}
-                      className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-700/20"
+                      className="text-destructive focus:bg-destructive/10 focus:text-destructive"
                     >
                       <LogOut className="mr-2 h-4 w-4" />
                       Logout
@@ -248,4 +199,3 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     </SidebarProvider>
   );
 }
-
