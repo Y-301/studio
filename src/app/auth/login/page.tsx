@@ -56,11 +56,16 @@ export default function LoginPage() {
     } catch (error: any) {
       console.error("Login error:", error);
       let errorMessage = "Could not sign in. Please check your credentials and try again.";
-      if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+      
+      if (error.code === 'auth/api-key-not-valid') {
+        errorMessage = "Application configuration error: Firebase API key is not valid. Please contact support or check the environment setup.";
+        console.error("CRITICAL: Firebase API Key is not valid. Ensure NEXT_PUBLIC_FIREBASE_API_KEY in your .env file is correct and the Firebase project is properly configured for this domain.");
+      } else if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
         errorMessage = "Invalid email or password. Please try again.";
       } else if (error.code === 'auth/too-many-requests') {
         errorMessage = "Too many failed login attempts. Please try again later.";
       }
+      
       toast({
         title: "Login Failed",
         description: errorMessage,
