@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WakeUpSimulator } from "@/components/simulation/WakeUpSimulator";
 import { DeviceCard, type Device } from '@/components/devices/DeviceCard';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SlidersHorizontal, Zap, House, Eye, Edit, PlusSquare, Trash2, Maximize, ChevronsUpDown, Lightbulb, Thermometer, Speaker, LayoutPanelLeft, MapPin, Palette, GripVertical, Save, Loader2, Move } from "lucide-react";
+import { SlidersHorizontal, Zap, House, Eye, Edit, PlusSquare, Trash2, Maximize, ChevronsUpDown, Lightbulb, Thermometer, Speaker, LayoutPanelLeft, MapPin, Palette, GripVertical, Save, Loader2, Move, Plus } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,7 +27,7 @@ const mockSimDevices: Device[] = [
 ];
 
 const initialMockRooms = ["Living Room", "Bedroom", "Kitchen", "Office", "Unassigned"];
-const mockFloors = ["Ground Floor", "First Floor"];
+const initialMockFloors = ["Ground Floor", "First Floor"];
 
 // Frontend state structure
 interface FloorPlanRoom {
@@ -101,7 +101,9 @@ const DEVICE_ICON_SIZE_PERCENT = 5;
 
 export default function SimulationPage() {
   const [editMode, setEditMode] = useState(false);
-  const [selectedFloor, setSelectedFloor] = useState(mockFloors[0]);
+  const [availableFloors, setAvailableFloors] = useState<string[]>(initialMockFloors);
+  const [selectedFloor, setSelectedFloor] = useState(initialMockFloors[0]);
+  const [newFloorNameInput, setNewFloorNameInput] = useState("");
   const [selectedRoomTab, setSelectedRoomTab] = useState("All");
   const { toast } = useToast();
   const floorPlanRef = useRef<HTMLDivElement>(null);
@@ -119,13 +121,7 @@ export default function SimulationPage() {
   const [isLoadingPlan, setIsLoadingPlan] = useState(true);
   const [isSavingPlan, setIsSavingPlan] = useState(false);
 
-  // Helper to get icon component from device type string
-  const getIconComponent = (type: string): React.ElementType => {
-    const device = mockSimDevices.find(d => d.type === type); // Or a dedicated map
-    return device?.icon || Palette; // Fallback icon
-  };
 
-  // Load floor plan data on mount
   useEffect(() => {
     const loadPlan = async () => {
       setIsLoadingPlan(true);
@@ -147,13 +143,18 @@ export default function SimulationPage() {
           };
         });
         setFloorPlanDevices(hydratedDevices);
-        setSelectedFloor(data.selectedFloor || mockFloors[0]);
+        setSelectedFloor(data.selectedFloor || initialMockFloors[0]);
+        // If loaded floor is not in initial mock floors, add it (for demo persistence)
+        if (data.selectedFloor && !availableFloors.includes(data.selectedFloor)) {
+          setAvailableFloors(prev => [...prev, data.selectedFloor]);
+        }
         toast({ title: "Floor plan loaded", description: "Retrieved existing floor plan."});
       } catch (error) {
         console.error("Error loading floor plan:", error);
         toast({ title: "Error Loading Plan", description: (error as Error).message, variant: "destructive" });
+        // Set default if loading fails
         setFloorPlanRooms([
-          { id: "fp-lr", name: "Living Room (Default)", x: 10, y: 10, width: 35, height: 30, devices: ["sim-light-1", "sim-thermo-1"]},
+          { id: "fp-lr-default", name: "Living Room (Default)", x: 10, y: 10, width: 35, height: 30, devices: ["sim-light-1"]},
         ]);
         setFloorPlanDevices([
           {id: "sim-light-1", name: "LR Light", icon: Lightbulb, x: 15, y: 15, width: DEVICE_ICON_SIZE_PERCENT, height: DEVICE_ICON_SIZE_PERCENT},
@@ -163,9 +164,24 @@ export default function SimulationPage() {
       }
     };
     loadPlan();
-  }, [toast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Removed toast from dependencies to avoid re-fetch on toast change
 
-  // Save floor plan data
+  const handleAddFloor = () => {
+    if (newFloorNameInput.trim() && !availableFloors.includes(newFloorNameInput.trim())) {
+      const newFloor = newFloorNameInput.trim();
+      setAvailableFloors(prev => [...prev, newFloor]);
+      setSelectedFloor(newFloor); // Select the new floor
+      setNewFloorNameInput("");
+      toast({ title: "Floor Added (Client-side)", description: `${newFloor} added to the list. Save plan to persist floor choice.` });
+    } else if (availableFloors.includes(newFloorNameInput.trim())) {
+      toast({ title: "Floor Exists", description: "This floor name already exists.", variant: "default" });
+    } else {
+      toast({ title: "Invalid Name", description: "Please enter a valid floor name.", variant: "destructive" });
+    }
+  };
+
+
   const handleSavePlan = async () => {
     setIsSavingPlan(true);
     try {
@@ -180,7 +196,7 @@ export default function SimulationPage() {
       const dataToSave: FloorPlanDataFromAPI = {
         rooms: floorPlanRooms,
         placedDevices: apiPlacedDevices,
-        selectedFloor: selectedFloor,
+        selectedFloor: selectedFloor, // Save the currently selected floor
       };
 
       const response = await fetch('/api/simulation/floorplan', {
@@ -268,18 +284,12 @@ export default function SimulationPage() {
   };
 
    const handleDeviceSimulationControl = (deviceId: string, controlType: "brightness" | "volume" | "status", value: any) => {
-    const deviceIndex = mockSimDevices.findIndex(d => d.id === deviceId);
-    if (deviceIndex !== -1) {
-        const updatedDevices = [...mockSimDevices]; // Create a mutable copy
-        const deviceToUpdate = { ...updatedDevices[deviceIndex] };
-        if (controlType === "brightness") deviceToUpdate.brightness = value;
-        if (controlType === "volume") deviceToUpdate.volume = value;
-        if (controlType === "status") deviceToUpdate.status = value ? "On" : "Off"; // Update status string
-
-        // This part is tricky with const mockSimDevices. For a real app, mockSimDevices would be state.
-        // For demo, we'll log and toast. To make DeviceCard reflect, mockSimDevices should be stateful.
-        console.log(`Sim: ${deviceId} ${controlType} changed to ${value}.`);
-        toast({ title: "Device Control (Sim Effect)", description: `${mockSimDevices[deviceIndex].name} ${controlType} set to ${value} in simulation.`});
+    // This function simulates control. In a real app, mockSimDevices would be stateful.
+    // For demo, we'll just log and toast. DeviceCard itself might update locally if prop is passed.
+    const device = mockSimDevices.find(d => d.id === deviceId);
+    if (device) {
+      console.log(`Sim: ${device.name} ${controlType} changed to ${value}. (Visual effect only)`);
+      toast({ title: "Device Control (Sim Effect)", description: `${device.name} ${controlType} set to ${value} in simulation.`});
     }
   };
 
@@ -393,7 +403,7 @@ export default function SimulationPage() {
       window.removeEventListener('mousemove', handleWindowMouseMove);
       window.removeEventListener('mouseup', handleWindowMouseUp);
     };
-  }, [draggingElementInfo, resizingRoomInfo, floorPlanRooms, floorPlanDevices, editMode]); // Removed setFloorPlanDevices from deps as it's part of draggingElementInfo logic
+  }, [draggingElementInfo, resizingRoomInfo, floorPlanRooms, floorPlanDevices, editMode]);
 
 
   if (isLoadingPlan) {
@@ -429,7 +439,7 @@ export default function SimulationPage() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-2">
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex gap-2 flex-wrap items-center">
               <Button onClick={() => setEditMode(!editMode)} variant={editMode ? "default" : "outline"}>
                 {editMode ? <Eye className="mr-2 h-4 w-4" /> : <Edit className="mr-2 h-4 w-4" />}
                 {editMode ? "View Mode" : "Edit Mode"}
@@ -439,9 +449,23 @@ export default function SimulationPage() {
                   <SelectValue placeholder="Select floor" />
                 </SelectTrigger>
                 <SelectContent>
-                  {mockFloors.map(floor => <SelectItem key={floor} value={floor}>{floor}</SelectItem>)}
+                  {availableFloors.map(floor => <SelectItem key={floor} value={floor}>{floor}</SelectItem>)}
                 </SelectContent>
               </Select>
+              {editMode && (
+                <div className="flex items-center gap-1">
+                  <Input 
+                    type="text" 
+                    placeholder="New floor name" 
+                    value={newFloorNameInput} 
+                    onChange={(e) => setNewFloorNameInput(e.target.value)}
+                    className="h-9 text-xs w-[120px]"
+                  />
+                  <Button variant="outline" size="icon" className="h-9 w-9" onClick={handleAddFloor} title="Add new floor">
+                    <Plus className="h-4 w-4"/>
+                  </Button>
+                </div>
+              )}
             </div>
             {editMode && (
               <div className="flex gap-2 mt-2 sm:mt-0 flex-wrap">
@@ -614,7 +638,7 @@ export default function SimulationPage() {
                                     onVolumeChange={(value) => handleDeviceControlChange(device.id, "volume", value)}
                                       onSimulationBrightnessChange={(value) => handleDeviceSimulationControl(device.id, "brightness", value)}
                                         onSimulationVolumeChange={(value) => handleDeviceSimulationControl(device.id, "volume", value)}
-                                    onToggle={(isOn) => handleDeviceControlChange(device.id, "status", isOn)}
+                                    onToggle={(isOn) => handleDeviceControlChange(device.id, "status", isOn ? "On" : "Off")}
                                     onColorChange={() => toast({title:"Change Color (Sim Demo)"})}
                                 />
                             ))}

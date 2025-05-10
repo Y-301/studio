@@ -37,7 +37,7 @@ import { dashboardNavItems } from '@/config/dashboard-nav';
 import { cn } from '@/lib/utils';
 import { Footer } from '@/components/layout/Footer';
 import { useToast } from '@/hooks/use-toast';
-import { ThemeToggle } from '@/components/shared/ThemeToggle'; // Import the new ThemeToggle
+import { ThemeToggle } from '@/components/shared/ThemeToggle';
 
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -53,12 +53,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         setCurrentUser(user);
       } else {
         setCurrentUser(null);
-        // router.push('/auth/login'); // Kept commented as per previous logic
+        // For demo purposes, allow access to /dashboard even if not logged in
+        // Other protected routes will still be handled by their `disabled` prop in nav
       }
       setLoadingAuth(false);
     });
     return () => unsubscribe();
-  }, [router]);
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -100,6 +101,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         <SidebarMenuButton
                           isActive={pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/dashboard' && !item.href.includes('#')) || (item.href.includes('#') && pathname === item.href.split('#')[0])}
                           tooltip={item.title}
+                          // An item is disabled if its 'disabled' flag is true AND there's no current user.
+                          // If an item should always be enabled, its 'disabled' flag should be false or undefined.
                           disabled={item.disabled && !currentUser} 
                         >
                           <item.icon />
@@ -136,7 +139,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <Avatar className="h-8 w-8">
                     <AvatarImage src={currentUser?.photoURL || undefined} alt={currentUser?.displayName || "User Avatar"} />
                     <AvatarFallback>
-                      {currentUser ? (currentUser.displayName ? currentUser.displayName.charAt(0).toUpperCase() : <UserCircle className="h-5 w-5"/>) : <UserCircle className="h-5 w-5" />}
+                      {currentUser ? (currentUser.displayName ? currentUser.displayName.charAt(0).toUpperCase() : currentUser.email ? currentUser.email.charAt(0).toUpperCase() : <UserCircle className="h-5 w-5"/>) : <UserCircle className="h-5 w-5"/>}
                     </AvatarFallback>
                   </Avatar>
                 </Button>
