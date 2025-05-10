@@ -14,14 +14,12 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { UserCircle, Bell, ShieldCheck, CreditCard, SlidersHorizontal, Link as LinkIcon, AlertTriangle, Trash2, Camera, LogOut } from "lucide-react"; // Added Camera
+import { UserCircle, Bell, ShieldCheck, CreditCard, SlidersHorizontal, Link as LinkIcon, AlertTriangle, Trash2, Camera, LogOut, Activity, BarChart, Zap, Users } from "lucide-react"; // Added Camera, Activity, BarChart, Zap, Users
 import { useToast } from "@/hooks/use-toast";
 import React, { useState, useEffect } from "react";
 import { auth } from "@/lib/firebase";
-import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
-import { useRouter } // Added for logout redirect
-
-from 'next/navigation';
+import { updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
+import { useRouter } from 'next/navigation';
 
 
 const profileFormSchema = z.object({
@@ -40,12 +38,25 @@ const preferencesFormSchema = z.object({
 });
 
 const passwordFormSchema = z.object({
-    currentPassword: z.string().min(1, "Current password is required."),
-    newPassword: z.string().min(8, "New password must be at least 8 characters."),
-    confirmNewPassword: z.string(),
-}).refine(data => data.newPassword === data.confirmNewPassword, {
+    currentPassword: z.string().min(1, "Current password is required.").optional().or(z.literal('')),
+    newPassword: z.string().min(8, "New password must be at least 8 characters.").optional().or(z.literal('')),
+    confirmNewPassword: z.string().optional().or(z.literal('')),
+}).refine(data => {
+    if (data.newPassword || data.confirmNewPassword) { // Only validate if new password fields are touched
+        return data.newPassword === data.confirmNewPassword;
+    }
+    return true;
+}, {
     message: "New passwords don't match",
     path: ["confirmNewPassword"],
+}).refine(data => {
+    if (data.newPassword && !data.currentPassword) {
+        return false;
+    }
+    return true;
+}, {
+    message: "Current password is required to set a new password.",
+    path: ["currentPassword"],
 });
 
 
@@ -53,8 +64,8 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const router = useRouter();
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
-  const [currentUserName, setCurrentUserName] = useState<string | null>(null);
-  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  const [currentUserName, setCurrentUserName] = useState<string | null>("User");
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>("user@example.com");
   const [currentUserAvatar, setCurrentUserAvatar] = useState<string | null>(null);
 
 
@@ -62,20 +73,24 @@ export default function SettingsPage() {
     const user = auth.currentUser;
     if (user) {
       profileForm.setValue("name", user.displayName || "");
-      profileForm.setValue("email", user.email || "");
-      setCurrentUserName(user.displayName);
-      setCurrentUserEmail(user.email);
+      profileForm.setValue("email", user.email || "user@example.com"); // Fallback for email
+      setCurrentUserName(user.displayName || "User"); // Fallback for name
+      setCurrentUserEmail(user.email || "user@example.com"); // Fallback for email
       setCurrentUserAvatar(user.photoURL);
       // Ideally, fetch timezone from user profile in DB if stored
+    } else {
+      // Handle case where user is not logged in, redirect or show message
+      toast({ title: "Not Authenticated", description: "Please login to access settings.", variant: "destructive" });
+      router.push("/auth/login");
     }
-  }, []);
+  }, [router]);
 
 
   const profileForm = useForm<z.infer<typeof profileFormSchema>>({
     resolver: zodResolver(profileFormSchema),
     defaultValues: {
-      name: "", // Will be set from Firebase auth
-      email: "", // Will be set from Firebase auth
+      name: "", 
+      email: "", 
       timezone: "America/New_York",
     },
   });
@@ -102,10 +117,23 @@ export default function SettingsPage() {
   });
 
 
-  function onProfileSubmit(values: z.infer<typeof profileFormSchema>) {
-    // TODO: Implement actual profile update (e.g., to Firebase profile or your DB)
-    console.log("Profile updated:", values);
-    toast({ title: "Profile Updated (Demo)", description: "Your profile information has been 'saved'." });
+  async function onProfileSubmit(values: z.infer<typeof profileFormSchema>) {
+    const user = auth.currentUser;
+    if (!user) {
+        toast({ title: "Error", description: "User not authenticated.", variant: "destructive"});
+        return;
+    }
+    try {
+        await updateProfile(user, { displayName: values.name, photoURL: avatarPreview || user.photoURL });
+        // Note: Firebase Auth email update is more complex and requires re-authentication or verification.
+        // For this demo, we are not updating email.
+        setCurrentUserName(values.name);
+        if(avatarPreview) setCurrentUserAvatar(avatarPreview);
+        toast({ title: "Profile Updated", description: "Your profile information has been saved." });
+    } catch (error: any) {
+        console.error("Profile update error:", error);
+        toast({ title: "Profile Update Failed", description: error.message, variant: "destructive" });
+    }
   }
 
   function onPreferencesSubmit(values: z.infer<typeof preferencesFormSchema>) {
@@ -129,6 +157,10 @@ export default function SettingsPage() {
         toast({ title: "Error", description: "User not found or email not available.", variant: "destructive" });
         return;
     }
+    if (!values.currentPassword || !values.newPassword) {
+        toast({ title: "Skipped", description: "Password not changed as new password was not provided.", variant: "default"});
+        return;
+    }
     try {
         const credential = EmailAuthProvider.credential(user.email, values.currentPassword);
         await reauthenticateWithCredential(user, credential);
@@ -150,9 +182,12 @@ export default function SettingsPage() {
   const handleAvatarChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      setAvatarPreview(URL.createObjectURL(file));
-      // In a real app, you'd upload this file to storage and update user.photoURL
-      toast({ title: "Avatar Preview Updated", description: "To save, update your profile (actual upload not implemented in demo)." });
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAvatarPreview(reader.result as string);
+        toast({ title: "Avatar Preview Updated", description: "Click 'Save Profile' to apply changes." });
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -160,16 +195,12 @@ export default function SettingsPage() {
     const user = auth.currentUser;
     if (user) {
         try {
-            // Note: Deleting a user is a sensitive operation. 
-            // In a real app, you'd re-authenticate first.
-            // await user.delete(); // This is the Firebase delete call
             console.log("Account deletion requested for user:", user.uid);
             toast({
                 title: "Account Deletion Initiated (Demo)",
                 description: "Your account would be deleted. Logging you out.",
                 variant: "destructive"
             });
-             // For demo, sign out and redirect
              await auth.signOut();
              router.push('/auth/signup');
 
@@ -197,7 +228,7 @@ export default function SettingsPage() {
       </div>
 
       <Tabs defaultValue="profile" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 lg:grid-cols-6 mb-6">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 lg:grid-cols-6 mb-6 overflow-x-auto">
           <TabsTrigger value="profile"><UserCircle className="mr-2 h-4 w-4 inline-block" />Profile</TabsTrigger>
           <TabsTrigger value="preferences"><SlidersHorizontal className="mr-2 h-4 w-4 inline-block" />Preferences</TabsTrigger>
           <TabsTrigger value="notifications"><Bell className="mr-2 h-4 w-4 inline-block" />Notifications</TabsTrigger>
@@ -217,7 +248,7 @@ export default function SettingsPage() {
                 <form onSubmit={profileForm.handleSubmit(onProfileSubmit)} className="space-y-6">
                   <div className="flex items-center space-x-4 mb-6">
                     <Avatar className="h-20 w-20">
-                       <AvatarImage src={avatarPreview || currentUserAvatar || `https://picsum.photos/seed/${currentUserEmail || 'avatar-settings'}/200/200`} alt="User Avatar" data-ai-hint="person avatar" />
+                       <AvatarImage src={avatarPreview || currentUserAvatar || undefined} alt={currentUserName || "User Avatar"} />
                       <AvatarFallback><UserCircle size={40}/></AvatarFallback>
                     </Avatar>
                     <Button variant="outline" type="button" onClick={() => document.getElementById('avatar-upload')?.click()}>
@@ -410,7 +441,7 @@ export default function SettingsPage() {
               <Card className="p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <img src="https://picsum.photos/seed/google-fit-logo/40/40" alt="Google Fit Logo" className="h-8 w-8 rounded-full" data-ai-hint="Google Fit logo" />
+                    <Activity className="h-8 w-8 text-red-500" /> {/* Google Fit Icon Replacement */}
                     <div>
                       <h4 className="font-medium">Google Fit</h4>
                       <p className="text-xs text-muted-foreground">Sync sleep, activity, and heart rate data.</p>
@@ -422,7 +453,7 @@ export default function SettingsPage() {
               <Card className="p-4">
                  <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <img src="https://picsum.photos/seed/apple-health-logo/40/40" alt="Apple Health Logo" className="h-8 w-8 rounded-full" data-ai-hint="Apple Health logo" />
+                        <BarChart className="h-8 w-8 text-gray-500" /> {/* Apple Health Icon Replacement */}
                         <div>
                         <h4 className="font-medium">Apple Health</h4>
                         <p className="text-xs text-muted-foreground">Import health data from your Apple devices.</p>
@@ -434,7 +465,7 @@ export default function SettingsPage() {
                <Card className="p-4">
                  <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <img src="https://picsum.photos/seed/spotify-logo/40/40" alt="Spotify Logo" className="h-8 w-8 rounded-full" data-ai-hint="Spotify logo" />
+                        <Zap className="h-8 w-8 text-green-500" /> {/* Spotify Icon Replacement */}
                         <div>
                         <h4 className="font-medium">Spotify</h4>
                         <p className="text-xs text-muted-foreground">Use your Spotify playlists for wake-up sounds.</p>
@@ -497,6 +528,28 @@ export default function SettingsPage() {
                 <p className="text-sm text-muted-foreground mb-2">Add an extra layer of security to your account.</p>
                 <Button variant="outline" onClick={() => toast({title: "Enable 2FA (Demo)", description:"2FA setup flow would start here."})}>Enable 2FA (Demo)</Button>
               </div>
+               <div className="mt-6 border-t pt-6">
+                <h3 className="text-lg font-medium">Active Sessions</h3>
+                <p className="text-sm text-muted-foreground mb-2">Review and manage devices logged into your account.</p>
+                <Card className="p-3">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="font-medium">Chrome on Mac OS X (Current)</p>
+                            <p className="text-xs text-muted-foreground">Last active: Just now</p>
+                        </div>
+                        <Button variant="link" size="sm" className="text-destructive" onClick={() => toast({title:"Session Terminated (Demo)"})}>Log out</Button>
+                    </div>
+                     <hr className="my-2"/>
+                     <div className="flex items-center justify-between">
+                        <div>
+                            <p className="font-medium">WakeSync iOS App</p>
+                            <p className="text-xs text-muted-foreground">Last active: 2 days ago</p>
+                        </div>
+                        <Button variant="link" size="sm" className="text-destructive" onClick={() => toast({title:"Session Terminated (Demo)"})}>Log out</Button>
+                    </div>
+                </Card>
+                <Button variant="outline" className="mt-2" onClick={() => toast({title:"Logged out all other sessions (Demo)"})}>Log Out All Other Sessions</Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -528,6 +581,16 @@ export default function SettingsPage() {
                  <div className="border-t pt-6">
                     <h3 className="text-md font-medium">Billing History</h3>
                      <p className="text-sm text-muted-foreground">No invoices yet. Your first invoice will appear here after your first billing cycle.</p>
+                     {/* Example of an invoice item */}
+                     {/* <Card className="p-3 mt-2">
+                        <div className="flex justify-between">
+                            <div>
+                                <p>Invoice #INV20240701</p>
+                                <p className="text-xs text-muted-foreground">July 1, 2024 - $9.99</p>
+                            </div>
+                            <Button variant="link" size="sm">Download PDF</Button>
+                        </div>
+                     </Card> */}
                 </div>
             </CardContent>
           </Card>
@@ -542,7 +605,7 @@ export default function SettingsPage() {
         <CardContent>
             <AlertDialog>
                 <AlertDialogTrigger asChild>
-                    <Button variant="destructive"><Trash2 className="mr-2 h-4 w-4"/>Delete Account</Button>
+                    <Button variant="destructive" disabled={!auth.currentUser}><Trash2 className="mr-2 h-4 w-4"/>Delete Account</Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                     <AlertDialogHeader>

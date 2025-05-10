@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState } from "react";
@@ -114,7 +115,7 @@ export default function WristbandPage() {
             Connect, manage, and view insights from your WakeSync compatible wristband.
           </p>
         </div>
-        <img src={`https://picsum.photos/seed/wristband-tech/150/100`} alt="Wristband technology" className="rounded-lg shadow-md hidden md:block" data-ai-hint="wearable technology" />
+        <Watch className="h-24 w-24 text-primary opacity-50 hidden md:block" data-ai-hint="smart watch" />
       </div>
 
       {feedbackMessage && (

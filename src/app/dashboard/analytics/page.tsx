@@ -5,11 +5,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { BarChart3, TrendingUp, BedDouble, Coffee, Zap, ListChecks, MessageCircle, Lightbulb, Bell } from "lucide-react"; // Added Bell
 import { Bar, BarChart, Pie, PieChart, Cell, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from 'recharts';
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+import React from "react";
 
 const sleepData = [
-  { date: "Mon", hours: 7.5 }, { date: "Tue", hours: 6.8 }, { date: "Wed", hours: 8.1 },
-  { date: "Thu", hours: 7.2 }, { date: "Fri", hours: 6.5 }, { date: "Sat", hours: 9.0 },
-  { date: "Sun", hours: 7.8 },
+  { date: "Mon", hours: 7.5, quality: "Good", deepSleep: 2.1, lightSleep: 4.0, remSleep: 1.4 }, 
+  { date: "Tue", hours: 6.8, quality: "Fair", deepSleep: 1.8, lightSleep: 3.5, remSleep: 1.5 }, 
+  { date: "Wed", hours: 8.1, quality: "Excellent", deepSleep: 2.5, lightSleep: 4.2, remSleep: 1.4 },
+  { date: "Thu", hours: 7.2, quality: "Good", deepSleep: 2.0, lightSleep: 3.8, remSleep: 1.4 }, 
+  { date: "Fri", hours: 6.5, quality: "Poor", deepSleep: 1.5, lightSleep: 3.2, remSleep: 1.8 }, 
+  { date: "Sat", hours: 9.0, quality: "Excellent", deepSleep: 3.0, lightSleep: 4.5, remSleep: 1.5 },
+  { date: "Sun", hours: 7.8, quality: "Good", deepSleep: 2.2, lightSleep: 4.1, remSleep: 1.5 },
 ];
 
 const energyData = [
@@ -46,7 +51,13 @@ const notificationSummaryData = [
 ];
 
 
-const chartConfigSleep = { hours: { label: "Sleep Hours", color: "hsl(var(--chart-1))" }} satisfies ChartConfig;
+const chartConfigSleep = { 
+    hours: { label: "Total Sleep", color: "hsl(var(--chart-1))" },
+    quality: { label: "Quality" },
+    deepSleep: { label: "Deep Sleep", color: "hsl(var(--chart-2))" },
+    lightSleep: { label: "Light Sleep", color: "hsl(var(--chart-3))" },
+    remSleep: { label: "REM Sleep", color: "hsl(var(--chart-4))" },
+} satisfies ChartConfig;
 const chartConfigEnergy = { level: { label: "Energy Level", color: "hsl(var(--chart-2))" }} satisfies ChartConfig;
 const chartConfigDeviceUsage = {
   hours: { label: "Usage (hours)" },
@@ -80,6 +91,39 @@ const chartConfigNotificationSummary = {
     workout: { label: "Low Battery", color: "hsl(var(--chart-4))" },
 } satisfies ChartConfig;
 
+const CustomSleepTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    return (
+      <div className="rounded-lg border bg-background p-2 shadow-sm">
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex flex-col">
+            <span className="text-[0.70rem] uppercase text-muted-foreground">
+              Day
+            </span>
+            <span className="font-bold text-muted-foreground">{label}</span>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[0.70rem] uppercase text-muted-foreground">
+              Total Sleep
+            </span>
+            <span className="font-bold" style={{ color: chartConfigSleep.hours.color }}>
+              {data.hours}h
+            </span>
+          </div>
+        </div>
+        <div className="mt-2 grid grid-cols-1 gap-1 text-xs">
+            <div>Quality: <span className="font-medium">{data.quality}</span></div>
+            <div>Deep: <span className="font-medium" style={{ color: chartConfigSleep.deepSleep.color }}>{data.deepSleep}h</span></div>
+            <div>Light: <span className="font-medium" style={{ color: chartConfigSleep.lightSleep.color }}>{data.lightSleep}h</span></div>
+            <div>REM: <span className="font-medium" style={{ color: chartConfigSleep.remSleep.color }}>{data.remSleep}h</span></div>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
 
 export default function AnalyticsPage() {
   return (
@@ -92,7 +136,7 @@ export default function AnalyticsPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
+        <Card className="hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Avg. Sleep</CardTitle>
             <BedDouble className="h-4 w-4 text-muted-foreground" />
@@ -102,7 +146,7 @@ export default function AnalyticsPage() {
             <p className="text-xs text-muted-foreground">+2.5% from last week</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Wake-up Consistency</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
@@ -112,7 +156,7 @@ export default function AnalyticsPage() {
             <p className="text-xs text-muted-foreground">Target: 90%</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Avg. Energy Level</CardTitle>
             <Coffee className="h-4 w-4 text-muted-foreground" />
@@ -122,7 +166,7 @@ export default function AnalyticsPage() {
             <p className="text-xs text-muted-foreground">-0.5 from last week</p>
           </CardContent>
         </Card>
-         <Card>
+         <Card className="hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Routine Adherence</CardTitle>
             <ListChecks className="h-4 w-4 text-muted-foreground" />
@@ -138,7 +182,7 @@ export default function AnalyticsPage() {
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle>Weekly Sleep Duration</CardTitle>
-            <CardDescription>Hours of sleep recorded per day over the last week.</CardDescription>
+            <CardDescription>Hours of sleep recorded per day over the last week. Includes quality and sleep stage breakdown in tooltip.</CardDescription>
           </CardHeader>
           <CardContent>
             <ChartContainer config={chartConfigSleep} className="h-[300px] w-full">
@@ -148,9 +192,10 @@ export default function AnalyticsPage() {
                 <YAxis tickLine={false} axisLine={false} unit="h" />
                 <Tooltip 
                   cursor={{ fill: 'hsl(var(--muted))' }}
-                  content={<ChartTooltipContent />}
+                  content={<CustomSleepTooltip />}
                 />
-                <Bar dataKey="hours" fill="var(--color-hours)" radius={4} name="Sleep Hours" />
+                <Legend />
+                <Bar dataKey="hours" fill="var(--color-hours)" radius={4} name="Total Sleep" />
               </BarChart>
             </ChartContainer>
           </CardContent>
@@ -171,6 +216,7 @@ export default function AnalyticsPage() {
                         cursor={{ fill: 'hsl(var(--muted))' }}
                         content={<ChartTooltipContent />} 
                     />
+                    <Legend />
                     <Bar dataKey="level" fill="var(--color-level)" radius={4} name="Energy Level"/>
                 </BarChart>
             </ChartContainer>
