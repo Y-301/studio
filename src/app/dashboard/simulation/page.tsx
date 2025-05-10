@@ -1,26 +1,27 @@
 
 "use client";
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WakeUpSimulator } from "@/components/simulation/WakeUpSimulator";
-import { DeviceCard, type Device } from '@/components/devices/DeviceCard'; // Import Device type
+import { DeviceCard, type Device } from '@/components/devices/DeviceCard'; 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SlidersHorizontal, Zap, House, Eye, Edit, PlusSquare, Trash2, Maximize, ChevronsUpDown, Lightbulb, Thermometer, Speaker, LayoutPanelLeft, MapPin, Palette } from "lucide-react";
+import { SlidersHorizontal, Zap, House, Eye, Edit, PlusSquare, Trash2, Maximize, ChevronsUpDown, Lightbulb, Thermometer, Speaker, LayoutPanelLeft, MapPin, Palette, GripVertical } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from '@/hooks/use-toast';
 import { Slider } from "@/components/ui/slider";
+import { cn } from '@/lib/utils';
 
-// Mock devices for simulation - assume these are linked from the main devices page
+// Mock devices for simulation
 const mockSimDevices: Device[] = [
-  { id: "sim-light-1", name: "Living Room Main Light", type: "light", status: "Off", room: "Living Room", Icon: Lightbulb, dataAiHint: "ceiling light", brightness: 80, connectionDetails: "" },
-  { id: "sim-thermo-1", name: "Living Room Thermostat", type: "thermostat", status: "20°C", room: "Living Room", Icon: Thermometer, dataAiHint: "smart thermostat", connectionDetails: "" },
-  { id: "sim-speaker-1", name: "Kitchen Speaker", type: "speaker", status: "Paused", room: "Kitchen", Icon: Speaker, dataAiHint: "kitchen speaker", volume: 30, connectionDetails: "" },
-  { id: "sim-blinds-1", name: "Bedroom Blinds", type: "blinds", status: "Closed", room: "Bedroom", Icon: LayoutPanelLeft, dataAiHint: "bedroom blinds", connectionDetails: "" },
-  { id: "sim-unassigned-1", name: "New Sensor", type: "sensor", status: "Waiting", room: "Unassigned", Icon: Zap, dataAiHint: "iot sensor", connectionDetails: "" }
+  { id: "sim-light-1", name: "Living Room Main Light", type: "light", status: "Off", room: "Living Room", icon: Lightbulb, dataAiHint: "ceiling light", brightness: 80, connectionDetails: "" },
+  { id: "sim-thermo-1", name: "Living Room Thermostat", type: "thermostat", status: "20°C", room: "Living Room", icon: Thermometer, dataAiHint: "smart thermostat", connectionDetails: "" },
+  { id: "sim-speaker-1", name: "Kitchen Speaker", type: "speaker", status: "Paused", room: "Kitchen", icon: Speaker, dataAiHint: "kitchen speaker", volume: 30, connectionDetails: "" },
+  { id: "sim-blinds-1", name: "Bedroom Blinds", type: "blinds", status: "Closed", room: "Bedroom", icon: LayoutPanelLeft, dataAiHint: "bedroom blinds", connectionDetails: "" },
+  { id: "sim-unassigned-1", name: "New Sensor", type: "sensor", status: "Waiting", room: "Unassigned", icon: Zap, dataAiHint: "iot sensor", connectionDetails: "" }
 ];
 
 const initialMockRooms = ["Living Room", "Bedroom", "Kitchen", "Office", "Unassigned"];
@@ -29,20 +30,46 @@ const mockFloors = ["Ground Floor", "First Floor"];
 interface FloorPlanRoom {
   id: string;
   name: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  devices: string[]; // IDs of devices in this room on the plan
+  x: number; // Percentage
+  y: number; // Percentage
+  width: number; // Percentage
+  height: number; // Percentage
+  devices: string[]; 
 }
 
 interface FloorPlanDevice {
-  id: string; // Corresponds to Device.id
+  id: string; 
   name: string;
-  Icon: React.ElementType;
-  x: number; // Relative to floor plan container
-  y: number;
+  icon: React.ElementType;
+  x: number; // Percentage
+  y: number; // Percentage
+  width: number; // Percentage (for icon container)
+  height: number; // Percentage (for icon container)
 }
+
+interface DraggingInfo {
+  id: string;
+  type: 'room' | 'device';
+  initialXPercent: number;
+  initialYPercent: number;
+  offsetXPercent: number; 
+  offsetYPercent: number;
+  elementWidthPercent: number;
+  elementHeightPercent: number;
+}
+
+interface ResizingInfo {
+  id: string; // Room ID
+  initialXPercent: number;
+  initialYPercent: number;
+  initialWidthPercent: number;
+  initialHeightPercent: number;
+  startMouseXPercent: number; 
+  startMouseYPercent: number;
+}
+
+const MIN_ROOM_SIZE_PERCENT = 10; // Minimum 10% width/height for rooms
+const DEVICE_ICON_SIZE_PERCENT = 5; // Approx size for device icons on plan
 
 
 export default function SimulationPage() {
@@ -50,21 +77,25 @@ export default function SimulationPage() {
   const [selectedFloor, setSelectedFloor] = useState(mockFloors[0]);
   const [selectedRoomTab, setSelectedRoomTab] = useState("All");
   const { toast } = useToast();
+  const floorPlanRef = useRef<HTMLDivElement>(null);
 
   const [floorPlanRooms, setFloorPlanRooms] = useState<FloorPlanRoom[]>([
-    { id: "fp-lr", name: "Living Room", x: 10, y: 10, width: 30, height: 25, devices: ["sim-light-1", "sim-thermo-1"]},
-    { id: "fp-k", name: "Kitchen", x: 45, y: 10, width: 20, height: 20, devices: ["sim-speaker-1"]},
-    { id: "fp-br", name: "Bedroom", x: 10, y: 40, width: 25, height: 20, devices: ["sim-blinds-1"]},
+    { id: "fp-lr", name: "Living Room", x: 10, y: 10, width: 35, height: 30, devices: ["sim-light-1", "sim-thermo-1"]},
+    { id: "fp-k", name: "Kitchen", x: 50, y: 10, width: 25, height: 25, devices: ["sim-speaker-1"]},
+    { id: "fp-br", name: "Bedroom", x: 10, y: 45, width: 30, height: 25, devices: ["sim-blinds-1"]},
   ]);
   const [floorPlanDevices, setFloorPlanDevices] = useState<FloorPlanDevice[]>([
-    {id: "sim-light-1", name: "LR Light", Icon: Lightbulb, x: 15, y: 15},
-    {id: "sim-thermo-1", name: "LR Thermo", Icon: Thermometer, x: 20, y: 20},
-    {id: "sim-speaker-1", name: "Kitchen Spk", Icon: Speaker, x: 50, y: 15},
+    {id: "sim-light-1", name: "LR Light", icon: Lightbulb, x: 15, y: 15, width: DEVICE_ICON_SIZE_PERCENT, height: DEVICE_ICON_SIZE_PERCENT},
+    {id: "sim-thermo-1", name: "LR Thermo", icon: Thermometer, x: 20, y: 20, width: DEVICE_ICON_SIZE_PERCENT, height: DEVICE_ICON_SIZE_PERCENT},
+    {id: "sim-speaker-1", name: "Kitchen Spk", icon: Speaker, x: 55, y: 15, width: DEVICE_ICON_SIZE_PERCENT, height: DEVICE_ICON_SIZE_PERCENT},
   ]);
   const [isAddRoomModalOpen, setIsAddRoomModalOpen] = useState(false);
   const [newRoomName, setNewRoomName] = useState("");
   const [isAddDeviceModalOpen, setIsAddDeviceModalOpen] = useState(false);
   const [deviceToAddToPlan, setDeviceToAddToPlan] = useState<string | undefined>();
+
+  const [draggingElementInfo, setDraggingElementInfo] = useState<DraggingInfo | null>(null);
+  const [resizingRoomInfo, setResizingRoomInfo] = useState<ResizingInfo | null>(null);
 
 
   const devicesForSelectedRoom = selectedRoomTab === "All" 
@@ -79,14 +110,14 @@ export default function SimulationPage() {
     const newRoom: FloorPlanRoom = {
         id: `fp-room-${Date.now()}`,
         name: newRoomName,
-        x: Math.random() * 50 + 5, // Random position for demo
+        x: Math.random() * 50 + 5, 
         y: Math.random() * 50 + 5,
-        width: Math.random() * 15 + 15,
-        height: Math.random() * 10 + 10,
+        width: Math.random() * 15 + MIN_ROOM_SIZE_PERCENT,
+        height: Math.random() * 10 + MIN_ROOM_SIZE_PERCENT,
         devices: [],
     };
     setFloorPlanRooms(prev => [...prev, newRoom]);
-    toast({ title: "Room Added (Demo)", description: `${newRoomName} added to the floor plan.` });
+    toast({ title: "Room Added", description: `${newRoomName} added to the floor plan.` });
     setIsAddRoomModalOpen(false);
     setNewRoomName("");
   };
@@ -108,24 +139,21 @@ export default function SimulationPage() {
     const newFPDevice: FloorPlanDevice = {
         id: device.id,
         name: device.name,
-        Icon: device.Icon,
-        x: Math.random() * 70 + 5, // Random position for demo
+        icon: device.icon,
+        x: Math.random() * 70 + 5, 
         y: Math.random() * 70 + 5,
+        width: DEVICE_ICON_SIZE_PERCENT,
+        height: DEVICE_ICON_SIZE_PERCENT,
     };
     setFloorPlanDevices(prev => [...prev, newFPDevice]);
-    toast({ title: "Device Added to Plan (Demo)", description: `${device.name} added.` });
+    toast({ title: "Device Added to Plan", description: `${device.name} added.` });
     setIsAddDeviceModalOpen(false);
     setDeviceToAddToPlan(undefined);
   };
   
   const handleDeviceControlChange = (deviceId: string, controlType: "brightness" | "volume" | "status", value: any) => {
-    // This function primarily affects the mockSimDevices if it were stateful.
-    // For the visual floor plan, the state updates are handled in handleDeviceSimulationControl or similar.
-    // Here, we'll just log and toast for the main device list part of the page.
     const device = mockSimDevices.find(d => d.id === deviceId);
     if(device) {
-        // In a real app, you would update a state variable for mockSimDevices here.
-        // For now, this is a conceptual update for DeviceCard interactions in the list below the floor plan.
         let statusMessage = `${device.name} ${controlType} set to ${value}`;
         if (controlType === "status") {
             statusMessage = `${device.name} turned ${value ? "On" : "Off"}`;
@@ -134,25 +162,136 @@ export default function SimulationPage() {
     }
   };
 
-
    const handleDeviceSimulationControl = (deviceId: string, controlType: "brightness" | "volume" | "status", value: any) => {
     const deviceIndex = mockSimDevices.findIndex(d => d.id === deviceId);
     if (deviceIndex !== -1) {
-        const updatedDevices = [...mockSimDevices];
-        const deviceToUpdate = { ...updatedDevices[deviceIndex] };
-        if (controlType === "brightness") deviceToUpdate.brightness = value;
-        if (controlType === "volume") deviceToUpdate.volume = value;
-        if (controlType === "status") deviceToUpdate.status = value ? "On" : "Off"; // Assuming boolean for status toggle
-        // Note: This mockSimDevices update won't persist. In a real app, this would be handled by a central state or backend.
-        console.log(`Sim: ${deviceId} ${controlType} changed to ${value}. (Local state only for demo)`);
-        toast({ title: "Device Control (Sim Demo)", description: `${deviceToUpdate.name} ${controlType} set to ${value}`});
-
-       setFloorPlanDevices(prev => prev.map(d => d.id === deviceId ? { ...d, name: deviceToUpdate.name, Icon: deviceToUpdate.Icon } : d));
-        setFloorPlanRooms(prev => prev.map(r => r.id === deviceId ? { ...r, name: deviceToUpdate.name } : r));
+        const updatedDevice = { ...mockSimDevices[deviceIndex] };
+        if (controlType === "brightness") updatedDevice.brightness = value;
+        if (controlType === "volume") updatedDevice.volume = value;
+        if (controlType === "status") updatedDevice.status = value ? "On" : "Off"; // Assuming value is boolean for toggle
+        
+        // This is a mock update. In a real app, `mockSimDevices` would be stateful.
+        // For now, we're just logging and toasting.
+        console.log(`Sim (Mock): ${deviceId} ${controlType} changed to ${value}.`);
+        toast({ title: "Device Control (Sim)", description: `${updatedDevice.name} ${controlType} set to ${value}`});
     }
   };
 
+  const checkRoomCollision = (updatedRoom: FloorPlanRoom, existingRooms: FloorPlanRoom[]): boolean => {
+    for (const existingRoom of existingRooms) {
+      if (existingRoom.id === updatedRoom.id) continue;
+      const r1 = updatedRoom;
+      const r2 = existingRoom;
+      const collision = r1.x < r2.x + r2.width &&
+                        r1.x + r1.width > r2.x &&
+                        r1.y < r2.y + r2.height &&
+                        r1.y + r1.height > r2.y;
+      if (collision) return true;
+    }
+    return false;
+  };
 
+  const handleMouseDownShared = (e: React.MouseEvent, id: string, type: 'room' | 'device') => {
+    if (!editMode || !floorPlanRef.current) return;
+    e.preventDefault();
+    const element = type === 'room' ? floorPlanRooms.find(r => r.id === id) : floorPlanDevices.find(d => d.id === id);
+    if (!element) return;
+
+    const containerRect = floorPlanRef.current.getBoundingClientRect();
+    const initialMouseX = (e.clientX - containerRect.left) / containerRect.width * 100;
+    const initialMouseY = (e.clientY - containerRect.top) / containerRect.height * 100;
+
+    setDraggingElementInfo({
+      id: id,
+      type: type,
+      initialXPercent: element.x,
+      initialYPercent: element.y,
+      offsetXPercent: initialMouseX - element.x,
+      offsetYPercent: initialMouseY - element.y,
+      elementWidthPercent: element.width,
+      elementHeightPercent: element.height,
+    });
+  };
+
+  const handleResizeMouseDown = (e: React.MouseEvent, roomId: string) => {
+    if (!editMode || !floorPlanRef.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const room = floorPlanRooms.find(r => r.id === roomId);
+    if (!room) return;
+
+    const containerRect = floorPlanRef.current.getBoundingClientRect();
+    setResizingRoomInfo({
+      id: roomId,
+      initialXPercent: room.x,
+      initialYPercent: room.y,
+      initialWidthPercent: room.width,
+      initialHeightPercent: room.height,
+      startMouseXPercent: (e.clientX - containerRect.left) / containerRect.width * 100,
+      startMouseYPercent: (e.clientY - containerRect.top) / containerRect.height * 100,
+    });
+  };
+
+  useEffect(() => {
+    if (!draggingElementInfo && !resizingRoomInfo) return;
+
+    const handleWindowMouseMove = (e: MouseEvent) => {
+      if (!floorPlanRef.current) return;
+      const containerRect = floorPlanRef.current.getBoundingClientRect();
+      const mouseXPercent = (e.clientX - containerRect.left) / containerRect.width * 100;
+      const mouseYPercent = (e.clientY - containerRect.top) / containerRect.height * 100;
+
+      if (draggingElementInfo) {
+        let newX = mouseXPercent - draggingElementInfo.offsetXPercent;
+        let newY = mouseYPercent - draggingElementInfo.offsetYPercent;
+
+        // Boundary checks
+        newX = Math.max(0, Math.min(newX, 100 - draggingElementInfo.elementWidthPercent));
+        newY = Math.max(0, Math.min(newY, 100 - draggingElementInfo.elementHeightPercent));
+
+        if (draggingElementInfo.type === 'room') {
+          const updatedRoom: FloorPlanRoom = {
+            ...floorPlanRooms.find(r => r.id === draggingElementInfo.id)!,
+            x: newX,
+            y: newY,
+          };
+          if (!checkRoomCollision(updatedRoom, floorPlanRooms)) {
+            setFloorPlanRooms(prev => prev.map(r => r.id === draggingElementInfo.id ? updatedRoom : r));
+          }
+        } else { // device
+          setFloorPlanDevices(prev => prev.map(d => d.id === draggingElementInfo.id ? { ...d, x: newX, y: newY } : d));
+        }
+      } else if (resizingRoomInfo) {
+        const room = floorPlanRooms.find(r => r.id === resizingRoomInfo.id);
+        if (!room) return;
+
+        let newWidth = resizingRoomInfo.initialWidthPercent + (mouseXPercent - resizingRoomInfo.startMouseXPercent);
+        let newHeight = resizingRoomInfo.initialHeightPercent + (mouseYPercent - resizingRoomInfo.startMouseYPercent);
+
+        // Min size and boundary checks
+        newWidth = Math.max(MIN_ROOM_SIZE_PERCENT, Math.min(newWidth, 100 - resizingRoomInfo.initialXPercent));
+        newHeight = Math.max(MIN_ROOM_SIZE_PERCENT, Math.min(newHeight, 100 - resizingRoomInfo.initialYPercent));
+        
+        const updatedRoom: FloorPlanRoom = { ...room, width: newWidth, height: newHeight };
+        
+        if (!checkRoomCollision(updatedRoom, floorPlanRooms.filter(r => r.id !== resizingRoomInfo.id))) {
+            setFloorPlanRooms(prev => prev.map(r => r.id === resizingRoomInfo.id ? updatedRoom : r));
+        }
+      }
+    };
+
+    const handleWindowMouseUp = () => {
+      setDraggingElementInfo(null);
+      setResizingRoomInfo(null);
+    };
+
+    window.addEventListener('mousemove', handleWindowMouseMove);
+    window.addEventListener('mouseup', handleWindowMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleWindowMouseMove);
+      window.removeEventListener('mouseup', handleWindowMouseUp);
+    };
+  }, [draggingElementInfo, resizingRoomInfo, floorPlanRooms, floorPlanDevices, editMode]);
 
 
   return (
@@ -200,7 +339,19 @@ export default function SimulationPage() {
             )}
           </div>
 
-          <div id="floor-plan-container" className="relative w-full h-[400px] md:h-[500px] bg-muted/50 border-2 border-dashed border-border rounded-lg flex items-center justify-center overflow-hidden p-2">
+          <div 
+            id="floor-plan-container" 
+            ref={floorPlanRef}
+            className={cn(
+                "relative w-full h-[400px] md:h-[500px] bg-muted/30 border-2 border-border rounded-lg flex items-center justify-center overflow-hidden p-2",
+                editMode && "border-dashed border-primary/50 cursor-grab",
+                (draggingElementInfo || resizingRoomInfo) && "cursor-grabbing"
+            )}
+            style={{
+                 backgroundImage: editMode ? 'linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(to right, var(--border) 1px, transparent 1px)' : 'none',
+                 backgroundSize: editMode ? '20px 20px' : 'auto',
+            }}
+          >
             {floorPlanRooms.length === 0 && floorPlanDevices.length === 0 && (
                  <div className="text-center text-muted-foreground p-4">
                     <ChevronsUpDown className="mx-auto h-12 w-12 mb-2" />
@@ -210,36 +361,60 @@ export default function SimulationPage() {
             )}
             {floorPlanRooms.map(room => (
                 <div key={room.id}
-                    className="absolute bg-primary/20 border border-primary rounded p-1 text-xs text-primary-foreground flex items-center justify-center cursor-grab"
+                    className={cn(
+                        "absolute bg-primary/20 border border-primary rounded p-1 text-xs text-primary-foreground flex items-center justify-center",
+                        editMode && "cursor-grab hover:border-primary/80 hover:bg-primary/30 transition-all",
+                        draggingElementInfo?.id === room.id && "opacity-70 ring-2 ring-primary z-10",
+                        resizingRoomInfo?.id === room.id && "opacity-70 ring-2 ring-accent z-10"
+                    )}
                     style={{ 
                         left: `${room.x}%`, top: `${room.y}%`, 
                         width: `${room.width}%`, height: `${room.height}%`,
-                        opacity: editMode ? 0.7 : 1,
                     }}
                     title={room.name}
-                    // onClick={() => editMode && toast({title:"Room Selected (Demo)", description: `${room.name}`})} // Placeholder for selection
+                    onMouseDown={(e) => handleMouseDownShared(e, room.id, 'room')}
                 >
                     {room.name}
-                    {editMode && <Button variant="ghost" size="icon" className="absolute -top-2 -right-2 h-5 w-5 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-0.5" onClick={(e) => { e.stopPropagation(); setFloorPlanRooms(prev => prev.filter(r => r.id !== room.id)); toast({title:"Room Removed", description: `${room.name} removed.`})}}><Trash2 className="h-3 w-3"/></Button>}
+                    {editMode && (
+                        <>
+                            <Button variant="ghost" size="icon" className="absolute -top-2 -right-2 h-5 w-5 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-0.5 z-20" onClick={(e) => { e.stopPropagation(); setFloorPlanRooms(prev => prev.filter(r => r.id !== room.id)); toast({title:"Room Removed", description: `${room.name} removed from plan.`})}}><Trash2 className="h-3 w-3"/></Button>
+                            <div 
+                                className="absolute bottom-0 right-0 w-3 h-3 bg-accent rounded-full cursor-se-resize border-2 border-background z-20 hover:scale-125 transition-transform"
+                                onMouseDown={(e) => handleResizeMouseDown(e, room.id)}
+                                title={`Resize ${room.name}`}
+                            >
+                              <GripVertical className="w-2 h-2 text-accent-foreground absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-50" />
+                            </div>
+                        </>
+                    )}
                 </div>
             ))}
              {floorPlanDevices.map(device => {
-                const DeviceIconComponent = device.Icon || Palette;
+                const DeviceIconComponent = device.icon || Palette;
                 return (
                     <div key={device.id}
-                        className="absolute flex flex-col items-center justify-center text-center cursor-grab p-1 bg-accent/30 border border-accent rounded-md shadow-sm"
-                         style={{ left: `${device.x}%`, top: `${device.y}%`, opacity: editMode ? 0.8 : 1}}
+                        className={cn(
+                            "absolute flex flex-col items-center justify-center text-center p-1 bg-accent/30 border border-accent rounded-md shadow-sm z-5", // Ensure devices are above rooms but below dragging element
+                            editMode && "cursor-grab hover:border-accent/80 hover:bg-accent/40 transition-all",
+                            draggingElementInfo?.id === device.id && "opacity-70 ring-2 ring-accent z-10"
+                        )}
+                         style={{ left: `${device.x}%`, top: `${device.y}%`, width: `${device.width}%`, height: `${device.height}%`}}
                          title={device.name}
-                        //  onClick={() => editMode && toast({title:"Device Selected (Demo)", description: `${device.name}`})} // Placeholder for selection
+                         onMouseDown={(e) => handleMouseDownShared(e, device.id, 'device')}
                     >
-                        <DeviceIconComponent className="h-4 w-4 text-accent-foreground"/>
-                        <span className="text-[10px] text-accent-foreground truncate max-w-[50px]">{device.name.split(" ")[0]}</span>
-                        {editMode && <Button variant="ghost" size="icon" className="absolute -top-1 -right-1 h-4 w-4 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-0.5" onClick={(e) => { e.stopPropagation(); setFloorPlanDevices(prev => prev.filter(d => d.id !== device.id)); toast({title:"Device Removed from Plan", description: `${device.name} removed.`})}}><Trash2 className="h-2 w-2"/></Button>}
+                        <DeviceIconComponent className="h-3/4 w-3/4 text-accent-foreground"/>
+                        <span className="text-[8px] md:text-[10px] text-accent-foreground truncate max-w-full block leading-tight">{device.name.split(" ")[0]}</span>
+                        {editMode && <Button variant="ghost" size="icon" className="absolute -top-1 -right-1 h-4 w-4 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-0.5 z-20" onClick={(e) => { e.stopPropagation(); setFloorPlanDevices(prev => prev.filter(d => d.id !== device.id)); toast({title:"Device Removed from Plan", description: `${device.name} removed.`})}}><Trash2 className="h-2 w-2"/></Button>}
                     </div>
                 );
             })}
-            {editMode && (
-                <p className="absolute bottom-2 left-2 text-xs text-muted-foreground bg-background/80 p-1 rounded">Edit Mode: Drag &amp; drop, resize (not implemented). Add/remove elements.</p>
+            {editMode && !draggingElementInfo && !resizingRoomInfo && (
+                <p className="absolute bottom-2 left-2 text-xs text-muted-foreground bg-background/80 p-1 rounded">Edit Mode: Drag rooms/devices. Resize rooms using bottom-right handle.</p>
+            )}
+             {(draggingElementInfo || resizingRoomInfo) && (
+                 <p className="absolute bottom-2 left-2 text-xs text-primary bg-background/80 p-1 rounded font-semibold animate-pulse">
+                    {draggingElementInfo ? `Dragging ${draggingElementInfo.type}...` : "Resizing room..."}
+                </p>
             )}
           </div>
         </CardContent>
@@ -303,12 +478,12 @@ export default function SimulationPage() {
                             {devicesForSelectedRoom.map(device => (
                                 <DeviceCard 
                                     key={device.id}
-                                    {...device} // This spreads all properties from device object
+                                    {...device} 
                                     onBrightnessChange={(value) => handleDeviceControlChange(device.id, "brightness", value)}
                                     onVolumeChange={(value) => handleDeviceControlChange(device.id, "volume", value)}
-                                      onSimulationBrightnessChange={(value) => handleDeviceSimulationControl(device.id, "brightness", value)}
-                                        onSimulationVolumeChange={(value) => handleDeviceSimulationControl(device.id, "volume", value)}
-                                    onToggle={(isOn) => handleDeviceControlChange(device.id, "status", isOn ? "On" : "Off")}
+                                    onSimulationBrightnessChange={(value) => handleDeviceSimulationControl(device.id, "brightness", value)}
+                                    onSimulationVolumeChange={(value) => handleDeviceSimulationControl(device.id, "volume", value)}
+                                    onToggle={(isOn) => handleDeviceControlChange(device.id, "status", isOn)}
                                     onColorChange={() => toast({title:"Change Color (Sim Demo)"})}
                                 />
                             ))}
@@ -339,4 +514,3 @@ export default function SimulationPage() {
     </div>
   );
 }
-
