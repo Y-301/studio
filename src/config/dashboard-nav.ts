@@ -20,7 +20,7 @@ export interface NavItem {
   href: string;
   icon: LucideIcon;
   label?: string; 
-  disabled?: boolean;
+  disabled?: boolean; // Can be used to disable for guests
   external?: boolean;
 }
 
@@ -41,21 +41,24 @@ export const dashboardNavItems: NavItemGroup[] = [
         title: 'Devices',
         href: '/dashboard/devices',
         icon: Smartphone,
+        disabled: true, // Example: disable for guests
       },
       {
         title: 'Routines',
         href: '/dashboard/routines',
         icon: ListChecks,
+        disabled: true, // Example: disable for guests
       },
       {
         title: 'Simulation',
         href: '/dashboard/simulation',
-        icon: Waypoints, // Using Waypoints as a more generic simulation icon
+        icon: Waypoints, 
       },
       {
         title: 'Wristband',
         href: '/dashboard/wristband',
         icon: Watch,
+        disabled: true, // Example: disable for guests
       },
       {
         title: 'Analytics',
@@ -66,16 +69,19 @@ export const dashboardNavItems: NavItemGroup[] = [
         title: 'Logs',
         href: '/dashboard/logs',
         icon: FileText,
+        disabled: true, // Example: disable for guests
       },
       {
         title: 'Settings',
         href: '/dashboard/settings',
         icon: SettingsIcon,
+        disabled: true, // Settings page likely requires authentication
       },
-       { // Added for consistency with Settings page tabs
+       { 
         title: 'Integrations',
-        href: '/dashboard/settings#integrations', // Link to the integrations tab in settings
+        href: '/dashboard/settings#integrations',
         icon: LinkIcon,
+        disabled: true, // Integrations likely require authentication
       },
     ],
   },

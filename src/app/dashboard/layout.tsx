@@ -31,7 +31,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Bell, LogOut, Moon, Sun, UserCircle, CreditCard, Settings, Link as LinkIcon, Loader2 } from 'lucide-react'; 
+import { Bell, LogOut, Moon, Sun, UserCircle, CreditCard, Settings, Link as LinkIcon, Loader2, LogIn } from 'lucide-react'; 
 import { Logo } from '@/components/shared/Logo';
 import { dashboardNavItems } from '@/config/dashboard-nav'; 
 import { cn } from '@/lib/utils';
@@ -98,7 +98,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         setCurrentUser(user);
       } else {
         setCurrentUser(null);
-        router.push('/auth/login'); 
+        // Removed redirection to allow unauthenticated access
+        // router.push('/auth/login'); 
       }
       setLoadingAuth(false);
     });
@@ -109,6 +110,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     try {
       await signOut(auth);
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
+      setCurrentUser(null); // Ensure currentUser state is updated
       router.push('/auth/login');
     } catch (error) {
       console.error("Logout error:", error);
@@ -124,10 +126,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
   
-  if (!currentUser) {
-     // This should ideally not be reached if redirection in onAuthStateChanged works promptly
-    return null; // Or a specific "Access Denied" page
-  }
+  // No longer redirecting if !currentUser, dashboard is accessible to guests
 
 
   return (
@@ -150,6 +149,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         <SidebarMenuButton
                           isActive={pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/dashboard' && !item.href.includes('#')) || (item.href.includes('#') && pathname === item.href.split('#')[0])}
                           tooltip={item.title}
+                          disabled={item.disabled && !currentUser} // Disable if item needs auth and user is guest
                         >
                           <item.icon />
                           <span>{item.title}</span>
@@ -183,42 +183,61 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                   <Avatar className="h-8 w-8">
-                    <AvatarImage src={currentUser?.photoURL || `https://picsum.photos/seed/${currentUser?.uid || 'user-avatar'}/100/100`} alt="User Avatar" data-ai-hint="person avatar" />
+                    <AvatarImage src={currentUser?.photoURL || `https://picsum.photos/seed/${currentUser?.uid || 'guest-avatar'}/100/100`} alt="User Avatar" data-ai-hint={currentUser ? "person avatar" : "guest avatar"} />
                     <AvatarFallback>
-                      {currentUser?.displayName ? currentUser.displayName.charAt(0).toUpperCase() : <UserCircle />}
+                      {currentUser ? (currentUser.displayName ? currentUser.displayName.charAt(0).toUpperCase() : <UserCircle />) : <UserCircle />}
                     </AvatarFallback>
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuLabel>{currentUser?.displayName || currentUser?.email || "My Account"}</DropdownMenuLabel>
+                <DropdownMenuLabel>{currentUser ? (currentUser.displayName || currentUser.email || "My Account") : "Guest"}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href="/dashboard/settings" className="flex items-center w-full">
-                    <Settings className="mr-2 h-4 w-4" /> 
-                    Profile & Settings
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/dashboard/settings#billing" className="flex items-center w-full">
-                    <CreditCard className="mr-2 h-4 w-4" />
-                    Billing
-                  </Link>
-                </DropdownMenuItem>
-                 <DropdownMenuItem asChild>
-                  <Link href="/dashboard/settings#integrations" className="flex items-center w-full">
-                    <LinkIcon className="mr-2 h-4 w-4" />
-                    Integrations
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={handleLogout}
-                  className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-700/20"
-                >
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Logout
-                </DropdownMenuItem>
+                {currentUser ? (
+                  <>
+                    <DropdownMenuItem asChild>
+                      <Link href="/dashboard/settings" className="flex items-center w-full">
+                        <Settings className="mr-2 h-4 w-4" /> 
+                        Profile & Settings
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/dashboard/settings#billing" className="flex items-center w-full">
+                        <CreditCard className="mr-2 h-4 w-4" />
+                        Billing
+                      </Link>
+                    </DropdownMenuItem>
+                     <DropdownMenuItem asChild>
+                      <Link href="/dashboard/settings#integrations" className="flex items-center w-full">
+                        <LinkIcon className="mr-2 h-4 w-4" />
+                        Integrations
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={handleLogout}
+                      className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-700/20"
+                    >
+                      <LogOut className="mr-2 h-4 w-4" />
+                      Logout
+                    </DropdownMenuItem>
+                  </>
+                ) : (
+                  <>
+                    <DropdownMenuItem asChild>
+                      <Link href="/auth/login" className="flex items-center w-full">
+                        <LogIn className="mr-2 h-4 w-4" />
+                        Login
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/auth/signup" className="flex items-center w-full">
+                        <UserCircle className="mr-2 h-4 w-4" />
+                        Sign Up
+                      </Link>
+                    </DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -229,3 +248,4 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     </SidebarProvider>
   );
 }
+
