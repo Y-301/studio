@@ -14,6 +14,9 @@ import {
   SidebarMenuButton,
   SidebarTrigger,
   SidebarInset,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarGroupContent,
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -25,9 +28,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Bell, LogOut, Moon, Sun, UserCircle } from 'lucide-react';
+import { Bell, LogOut, Moon, Sun, UserCircle, CreditCard, Settings } from 'lucide-react'; // Added CreditCard and Settings for consistency
 import { Logo } from '@/components/shared/Logo';
-import { dashboardNavItems, type NavItem } from '@/config/dashboard-nav';
+import { dashboardNavItems, type NavItemGroup } from '@/config/dashboard-nav'; // Updated import type
 import { cn } from '@/lib/utils';
 
 // A simple theme toggle - for demonstration. 
@@ -37,18 +40,32 @@ function ThemeToggle() {
 
   React.useEffect(() => {
     const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    setIsDarkMode(document.documentElement.classList.contains('dark') || (!('theme' in localStorage) && prefersDark));
+    const theme = localStorage.getItem('theme');
+    if (theme === 'dark') {
+      setIsDarkMode(true);
+      document.documentElement.classList.add('dark');
+    } else if (theme === 'light') {
+      setIsDarkMode(false);
+      document.documentElement.classList.remove('dark');
+    } else if (prefersDark) {
+      setIsDarkMode(true);
+      document.documentElement.classList.add('dark');
+    } else {
+      setIsDarkMode(false);
+      document.documentElement.classList.remove('dark');
+    }
   }, []);
 
   const toggleTheme = () => {
-    if (isDarkMode) {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    } else {
+    const newIsDarkMode = !isDarkMode;
+    setIsDarkMode(newIsDarkMode);
+    if (newIsDarkMode) {
       document.documentElement.classList.add('dark');
       localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
     }
-    setIsDarkMode(!isDarkMode);
   };
 
   return (
@@ -64,26 +81,35 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <SidebarProvider defaultOpen>
-      <Sidebarapsible="icon">
+      <Sidebar collapsible="icon">
         <SidebarHeader>
           <Logo />
         </SidebarHeader>
         <SidebarContent>
-          <SidebarMenu>
-            {dashboardNavItems.map((item) => (
-              <SidebarMenuItem key={item.href}>
-                <Link href={item.href} legacyBehavior passHref>
-                  <SidebarMenuButton
-                    isActive={pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/dashboard')}
-                    tooltip={item.title}
-                  >
-                    <item.icon />
-                    <span>{item.title}</span>
-                  </SidebarMenuButton>
-                </Link>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
+          {dashboardNavItems.map((group, groupIndex) => (
+            <SidebarGroup key={group.title || `group-${groupIndex}`}>
+              {group.title && (
+                <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
+              )}
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {group.items.map((item) => (
+                    <SidebarMenuItem key={item.href}>
+                      <Link href={item.href} legacyBehavior passHref>
+                        <SidebarMenuButton
+                          isActive={pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/dashboard')}
+                          tooltip={item.title}
+                        >
+                          <item.icon />
+                          <span>{item.title}</span>
+                        </SidebarMenuButton>
+                      </Link>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          ))}
         </SidebarContent>
         <SidebarFooter>
           {/* Placeholder for any footer items in sidebar */}
@@ -116,14 +142,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>My Account</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>
+                <DropdownMenuItem asChild>
                   <Link href="/dashboard/settings" className="flex items-center w-full">
-                    <UserCircle className="mr-2 h-4 w-4" />
-                    Profile
+                    <Settings className="mr-2 h-4 w-4" /> 
+                    Profile & Settings
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem asChild>
                   <Link href="/dashboard/settings#billing" className="flex items-center w-full">
+                    <CreditCard className="mr-2 h-4 w-4" />
                     Billing
                   </Link>
                 </DropdownMenuItem>
