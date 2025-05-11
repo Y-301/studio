@@ -1,28 +1,43 @@
 
-import express, { Request, Response } from 'express';
+import express, { type Request, type Response, type NextFunction } from 'express';
+import cors from 'cors';
+import config from './config'; // Loads .env automatically
+import mainRouter from './routes'; // Main router from routes/index.ts
+import { initializeScheduler } from './services/schedulerService'; // Scheduler
 
 const app = express();
-const port = process.env.BACKEND_PORT || 3001; // You can change this port
 
-app.use(express.json());
+// Middleware
+app.use(cors()); // Enable CORS for all routes
+app.use(express.json()); // Parse JSON request bodies
+app.use(express.urlencoded({ extended: true })); // Parse URL-encoded request bodies
 
-// Basic route to check if the server is running
-app.get('/api/health', (req: Request, res: Response) => {
-  res.status(200).json({ status: 'Backend is healthy and running!' });
+// Log requests (simple logger)
+app.use((req: Request, res: Response, next: NextFunction) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
 });
 
-// Placeholder for user routes (can be expanded later)
-// Example: app.use('/api/users', require('./routes/userRoutes'));
+// API Routes
+app.use('/api', mainRouter); // Mount main router under /api prefix
 
-// Placeholder for device routes
-// Example: app.use('/api/devices', require('./routes/deviceRoutes'));
-
-// Placeholder for routine routes
-// Example: app.use('/api/routines', require('./routes/routineRoutes'));
-
-
-app.listen(port, () => {
-  console.log(`WakeSync backend server listening on port ${port}`);
+// Root route (optional, for simple server check)
+app.get('/', (req: Request, res: Response) => {
+  res.send('WakeSync Backend is alive!');
 });
 
-export default app; // Optional: export for testing or other uses
+// Error Handling Middleware (simple example)
+app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+  console.error('Unhandled error:', err.stack);
+  res.status(500).json({ message: 'Something went wrong on the server!' });
+});
+
+// Initialize services that need to run on startup
+initializeScheduler(); // Load and schedule routines
+
+app.listen(config.port, () => {
+  console.log(`WakeSync backend server running on http://localhost:${config.port}`);
+  console.log(`Environment: ${config.nodeEnv}`);
+});
+
+export default app;
