@@ -1,20 +1,25 @@
-
 // backend/src/routes/routineRoutes.ts
-import express, { Request, Response } from 'express';
+import express from 'express';
+import * as routineController from '../controllers/routineController';
+
 const router = express.Router();
 
-// Example: Get all routines for a user
-router.get('/user/:userId', (req: Request, res: Response) => {
-  const userId = req.params.userId;
-  // TODO: Fetch routines for this user from database
-  res.json({ message: `Routines for user ${userId}`, data: [{id: "routine1", name: "Morning Wake Up", actions: []}] });
-});
+// GET /api/routines - Get all routines for the authenticated user
+router.get('/', routineController.getAllRoutines);
 
-// Example: Trigger a routine
-router.post('/:routineId/trigger', (req: Request, res: Response) => {
-  const routineId = req.params.routineId;
-  // TODO: Implement routine triggering logic
-  res.json({ message: `Routine ${routineId} triggered` });
-});
+// POST /api/routines - Create a new routine
+router.post('/', routineController.createRoutine);
 
-module.exports = router;
+// GET /api/routines/:routineId - Get a specific routine by ID
+router.get('/:routineId', routineController.getRoutineById);
+
+// PUT /api/routines/:routineId - Update an existing routine
+router.put('/:routineId', routineController.updateRoutine);
+
+// DELETE /api/routines/:routineId - Delete a routine
+router.delete('/:routineId', routineController.deleteRoutine);
+
+// POST /api/routines/:routineId/trigger - Manually trigger a routine
+router.post('/:routineId/trigger', routineController.triggerRoutine);
+
+export default router;

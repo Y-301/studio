@@ -1,35 +1,98 @@
-
 {
-  "sampleRoutine123": {
-    "id": "sampleRoutine123",
+  "routine-user1-morning": {
+    "id": "routine-user1-morning",
     "userId": "user1",
-    "name": "Daily Morning Check",
-    "description": "A sample routine that runs every morning.",
+    "name": "Morning Energizer",
+    "description": "Wake up lights, coffee machine on, morning news.",
     "trigger": {
       "type": "time",
-      "details": {
-        "time": "08:00",
-        "timezone": "America/New_York"
-      }
+      "details": "07:00 AM"
     },
     "actions": [
       {
         "deviceId": "light001",
-        "actionType": "turn_on",
-        "actionData": {
-          "brightness": 50
-        }
+        "deviceName": "Living Room Lamp",
+        "deviceType": "light",
+        "targetState": "on",
+        "actionData": { "brightness": 70 }
       },
       {
         "deviceId": "thermostat001",
-        "actionType": "set_temperature",
-        "actionData": {
-          "temperature": 21
-        }
+        "deviceName": "Main Thermostat",
+        "deviceType": "thermostat",
+        "targetState": "22", 
+        "actionData": { "temperature": 22 }
+      },
+      {
+        "deviceId": "speaker001",
+        "deviceName": "Kitchen Speaker",
+        "deviceType": "speaker",
+        "targetState": "on",
+        "actionData": { "source": "news_briefing", "volume": 40 }
       }
     ],
     "isEnabled": true,
-    "createdAt": "2024-01-01T10:00:00.000Z",
-    "updatedAt": "2024-01-01T10:00:00.000Z"
+    "createdAt": "2024-07-01T10:00:00.000Z",
+    "updatedAt": "2024-07-15T09:30:00.000Z",
+    "lastRun": "2024-07-16T07:00:00.000Z"
+  },
+  "routine-user1-evening": {
+    "id": "routine-user1-evening",
+    "userId": "user1",
+    "name": "Evening Wind-Down",
+    "description": "Dim lights, relaxing music, lock doors.",
+    "trigger": {
+      "type": "time",
+      "details": "10:00 PM"
+    },
+    "actions": [
+      {
+        "deviceId": "light001",
+        "deviceName": "Living Room Lamp",
+        "deviceType": "light",
+        "targetState": "on",
+        "actionData": { "brightness": 20 }
+      },
+      {
+        "deviceId": "speaker001",
+        "deviceName": "Kitchen Speaker",
+        "deviceType": "speaker",
+        "targetState": "on",
+        "actionData": { "source": "relaxing_playlist", "volume": 30 }
+      }
+    ],
+    "isEnabled": true,
+    "createdAt": "2024-07-01T10:05:00.000Z",
+    "updatedAt": "2024-07-14T22:00:00.000Z",
+    "lastRun": "2024-07-15T22:00:00.000Z"
+  },
+  "routine-user1-workout": {
+    "id": "routine-user1-workout",
+    "userId": "user1",
+    "name": "Workout Mode",
+    "description": "Cool down room, energizing playlist.",
+    "trigger": {
+      "type": "manual"
+    },
+    "actions": [
+      {
+        "deviceId": "fan001",
+        "deviceName": "Office Ceiling Fan", 
+        "deviceType": "fan",
+        "targetState": "on",
+        "actionData": { "speed": "high" }
+      },
+      {
+        "deviceId": "speaker001",
+        "deviceName": "Kitchen Speaker",
+        "deviceType": "speaker",
+        "targetState": "on",
+        "actionData": { "source": "workout_playlist", "volume": 60 }
+      }
+    ],
+    "isEnabled": false,
+    "createdAt": "2024-07-10T15:00:00.000Z",
+    "updatedAt": "2024-07-10T15:00:00.000Z",
+    "lastRun": null
   }
 }

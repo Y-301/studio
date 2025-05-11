@@ -1,11 +1,11 @@
 
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { DeviceCard } from "@/components/devices/DeviceCard";
-import { PlusCircle, Lightbulb, Thermometer, Speaker, LayoutPanelLeft, Tv, Wind, Palette, Power, HardDrive } from "lucide-react";
+import { DeviceCard, type Device } from "@/components/devices/DeviceCard"; // Ensure Device type is exported
+import { PlusCircle, Lightbulb, Thermometer, Speaker, LayoutPanelLeft, Tv, Wind, Palette, Power, HardDrive, Loader2, AlertTriangle, Smartphone } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,30 +14,19 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useToast } from "@/hooks/use-toast";
+import { apiClient } from "@/lib/apiClient"; // Import the API client
 
 const deviceIconMap: { [key: string]: React.ElementType } = {
   light: Lightbulb,
   thermostat: Thermometer,
   blinds: LayoutPanelLeft,
   speaker: Speaker,
-  sensor: HardDrive, // Using HardDrive as a generic sensor icon
+  sensor: HardDrive,
   tv: Tv,
   fan: Wind,
   switch: Power,
-  other: Palette, // Palette as a generic 'other' icon
+  other: Palette,
 };
-
-
-const initialDevices = [
-  { id: "1", name: "Living Room Lamp", type: "light", status: "On", room: "Living Room", icon: Lightbulb, dataAiHint: "lamp light", brightness: 70 },
-  { id: "2", name: "Bedroom Thermostat", type: "thermostat", status: "22°C", room: "Bedroom", icon: Thermometer, dataAiHint: "thermostat control" },
-  { id: "3", name: "Kitchen Blinds", type: "blinds", status: "50% Open", room: "Kitchen", icon: LayoutPanelLeft, dataAiHint: "window blinds" },
-  { id: "4", name: "Office Speaker", type: "speaker", status: "Paused", room: "Office", icon: Speaker, dataAiHint: "bluetooth speaker", volume: 50 },
-  { id: "5", name: "Outdoor Lights", type: "light", status: "Off", room: "Exterior", icon: Lightbulb, dataAiHint: "outdoor lighting", brightness: 100 },
-  { id: "6", name: "Nursery Temp Sensor", type: "sensor", status: "21°C", room: "Nursery", icon: HardDrive, dataAiHint: "temperature sensor" },
-  { id: "7", name: "Smart TV", type: "tv", status: "Off", room: "Living Room", icon: Tv, dataAiHint: "smart television" },
-  { id: "8", name: "Ceiling Fan", type: "fan", status: "Medium", room: "Bedroom", icon: Wind, dataAiHint: "ceiling fan" },
-];
 
 const deviceTypes = ["light", "thermostat", "blinds", "speaker", "sensor", "tv", "fan", "switch", "other"] as const;
 const roomTypes = ["Living Room", "Bedroom", "Kitchen", "Office", "Bathroom", "Nursery", "Dining Room", "Exterior", "Hallway", "Unassigned"] as const;
@@ -47,15 +36,19 @@ const deviceFormSchema = z.object({
   name: z.string().min(3, "Device name must be at least 3 characters."),
   type: z.enum(deviceTypes, { required_error: "Device type is required." }),
   room: z.enum(roomTypes, { required_error: "Room is required." }),
+  status: z.string().optional(), // Status can be set by backend or default
+  settings: z.any().optional(), // For brightness, volume etc.
   connectionDetails: z.string().optional(),
+  dataAiHint: z.string().optional(),
 });
 
 type DeviceFormData = z.infer<typeof deviceFormSchema>;
-export type Device = DeviceFormData & { id: string; status: string; icon: React.ElementType; dataAiHint?: string; brightness?: number; volume?: number; };
 
 
 export default function DevicesPage() {
-  const [devices, setDevices] = useState<Device[]>(initialDevices);
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<"all" | typeof deviceTypes[number]>("all");
   const [filterRoom, setFilterRoom] = useState<"all" | typeof roomTypes[number]>("all");
@@ -63,9 +56,30 @@ export default function DevicesPage() {
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
   const { toast } = useToast();
 
-  const { register, handleSubmit, control, reset, formState: { errors } } = useForm<DeviceFormData>({
+  const { register, handleSubmit, control, reset, formState: { errors, isSubmitting } } = useForm<DeviceFormData>({
     resolver: zodResolver(deviceFormSchema),
   });
+
+  const fetchDevices = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      // Backend uses MOCK_USER_ID 'user1' for now.
+      const fetchedDevices = await apiClient<Device[]>('/devices');
+      setDevices(fetchedDevices.map(d => ({...d, icon: deviceIconMap[d.type] || Palette })));
+    } catch (err) {
+      setError((err as Error).message || "Failed to fetch devices.");
+      toast({ title: "Error", description: (err as Error).message || "Could not fetch devices.", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDevices();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
 
   const filteredDevices = useMemo(() => {
     return devices.filter(device => {
@@ -78,7 +92,7 @@ export default function DevicesPage() {
 
   const handleAddDevice = () => {
     setEditingDevice(null);
-    reset({ name: "", type: undefined, room: undefined, connectionDetails: "" });
+    reset({ name: "", type: "light", room: "Unassigned", connectionDetails: "", status: "off", settings: { brightness: 50 } });
     setIsModalOpen(true);
   };
 
@@ -87,48 +101,102 @@ export default function DevicesPage() {
     reset({
       id: device.id,
       name: device.name,
-      type: device.type,
-      room: device.room,
+      type: device.type as any, // Zod enum expects specific type
+      room: device.room as any, // Zod enum expects specific type
+      status: device.status,
+      settings: device.settings,
       connectionDetails: device.connectionDetails || `Mock Connection for ${device.name}`
     });
     setIsModalOpen(true);
   };
 
-  const onSubmit = (data: DeviceFormData) => {
-    if (editingDevice && editingDevice.id) {
-      setDevices(prev => prev.map(d => d.id === editingDevice.id ? { ...d, ...data, icon: deviceIconMap[data.type] || Palette } : d));
-      toast({ title: "Device Updated", description: `${data.name} has been updated.` });
-    } else {
-      const newDevice: Device = {
-        ...data,
-        id: String(Date.now()),
-        status: data.type === 'light' || data.type === 'speaker' || data.type === 'switch' || data.type === 'fan' || data.type === 'tv' ? "Off" : (data.type === 'thermostat' ? "20°C" : (data.type === 'blinds' ? "Closed" : "N/A")),
-        icon: deviceIconMap[data.type] || Palette,
-        dataAiHint: data.type,
-        ...(data.type === 'light' && { brightness: 50 }),
-        ...(data.type === 'speaker' && { volume: 50 }),
-      };
-      setDevices(prev => [newDevice, ...prev]);
-      toast({ title: "Device Added", description: `${newDevice.name} has been added.` });
+  const onSubmit = async (data: DeviceFormData) => {
+    try {
+      if (editingDevice && editingDevice.id) {
+        // Ensure 'id' is not part of the payload for update as per typical REST patterns
+        const { id, ...updateData } = data;
+        await apiClient<Device>(`/devices/${editingDevice.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(updateData),
+        });
+        toast({ title: "Device Updated", description: `${data.name} has been updated.` });
+      } else {
+        // For new device, id is generated by backend
+        const { id, ...createData } = data;
+         // Set default status/settings based on type if not provided
+        if (!createData.status) {
+            createData.status = createData.type === 'light' || createData.type === 'speaker' || createData.type === 'switch' || createData.type === 'fan' || createData.type === 'tv' ? "off" : (createData.type === 'thermostat' ? "20" : (createData.type === 'blinds' ? "closed" : "N/A"));
+        }
+        if (!createData.settings) {
+            if (createData.type === 'light') createData.settings = { brightness: 50 };
+            if (createData.type === 'speaker') createData.settings = { volume: 50 };
+            if (createData.type === 'thermostat') createData.settings = { temperature: 20 };
+        }
+
+        await apiClient<Device>('/devices', {
+          method: 'POST',
+          body: JSON.stringify(createData),
+        });
+        toast({ title: "Device Added", description: `${data.name} has been added.` });
+      }
+      fetchDevices(); // Refresh device list
+      setIsModalOpen(false);
+      reset();
+    } catch (err) {
+      toast({ title: "Operation Failed", description: (err as Error).message, variant: "destructive" });
     }
-    setIsModalOpen(false);
-    reset();
   };
 
-  const handleDeviceControlChange = (deviceId: string, controlType: "brightness" | "volume" | "status" | "color", value: any) => {
-     setDevices(prev => prev.map(d => {
-        if (d.id === deviceId) {
-            const updatedDevice = {...d};
-            if (controlType === "brightness") updatedDevice.brightness = value;
-            if (controlType === "volume") updatedDevice.volume = value;
-            if (controlType === "status") updatedDevice.status = value;
-            // if (controlType === "color") // handle color change if needed
-            toast({ title: "Device Updated (Demo)", description: `${d.name} ${controlType} set to ${value}`});
-            return updatedDevice;
+  const handleDeviceControlChange = async (deviceId: string, controlType: "brightness" | "volume" | "status" | "color", value: any) => {
+     try {
+        let payload: any = {};
+        if (controlType === "status") {
+            payload.status = value;
+        } else if (controlType === "brightness") {
+            payload.settings = { brightness: value };
+            // If turning on via brightness change, also set status to 'on'
+            if (value > 0 && devices.find(d => d.id === deviceId)?.status === 'off') payload.status = 'on';
+        } else if (controlType === "volume") {
+            payload.settings = { volume: value };
+             // If turning on via volume change, also set status to 'on'
+            if (value > 0 && devices.find(d => d.id === deviceId)?.status === 'off') payload.status = 'on';
+        } else if (controlType === "color") {
+            // payload.settings = { color: value }; // Assuming backend handles color this way
+            toast({title: "Change Color (Demo)", description: `Color change for ${deviceId} to ${value} (not fully implemented)`});
+            return; // Early return if color change is just a demo
         }
-        return d;
-     }));
+
+        await apiClient<Device>(`/devices/${deviceId}/control`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+        toast({ title: "Device Updated", description: `Device ${controlType} set to ${value}`});
+        fetchDevices(); // Refresh to get the latest state
+     } catch (err) {
+        toast({ title: "Control Failed", description: (err as Error).message, variant: "destructive" });
+     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-200px)]">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-4 text-lg text-muted-foreground">Loading Devices...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-destructive">
+        <AlertTriangle className="h-12 w-12 mb-4" />
+        <h2 className="text-xl font-semibold mb-2">Error Fetching Devices</h2>
+        <p className="text-center mb-4">{error}</p>
+        <Button onClick={fetchDevices}><PlusCircle className="mr-2 h-4 w-4"/>Retry</Button>
+      </div>
+    );
+  }
+
 
   return (
     <div className="space-y-8">
@@ -191,15 +259,16 @@ export default function DevicesPage() {
                   name={device.name}
                   type={device.type}
                   status={device.status}
-                  icon={device.icon}
+                  icon={device.icon || deviceIconMap[device.type] || Palette} // Fallback if icon not set
                   room={device.room}
                   dataAiHint={device.dataAiHint}
-                  brightness={device.brightness}
+                  brightness={device.settings?.brightness}
                   onBrightnessChange={(value) => handleDeviceControlChange(device.id, "brightness", value)}
-                  volume={device.volume}
+                  volume={device.settings?.volume}
                   onVolumeChange={(value) => handleDeviceControlChange(device.id, "volume", value)}
                   onColorChange={device.type === 'light' ? () => toast({title: "Change Color (Demo)", description: `Color picker for ${device.name} would open.`}) : undefined}
-                  onToggle={(isOn) => handleDeviceControlChange(device.id, "status", isOn ? "On" : "Off")}
+                  onToggle={(isOn) => handleDeviceControlChange(device.id, "status", isOn ? "on" : "off")}
+                  // onEdit={() => handleEditDevice(device)} // Removed as DeviceCard doesn't have onEdit
                 />
               ))}
             </div>
@@ -274,7 +343,10 @@ export default function DevicesPage() {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-              <Button type="submit">{editingDevice ? "Save Changes" : "Add Device"}</Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {editingDevice ? "Save Changes" : "Add Device"}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

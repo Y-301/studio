@@ -1,33 +1,62 @@
 
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, ListChecks, Sun, Moon, Zap, Clock, ZapOff, Edit3, Settings, AlertTriangle, Info } from "lucide-react"; // Added icons
-import Link from "next/link";
+import { PlusCircle, ListChecks, Sun, Moon, Zap, Clock, ZapOff, Edit3, Settings, AlertTriangle, Info, Loader2, Play } from "lucide-react";
 import { RoutineSuggestionClient } from "@/components/routines/RoutineSuggestionClient";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+// import { Textarea } from "@/components/ui/textarea"; // Not used in this version of form
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription as ShadcnFormDescription } from "@/components/ui/form"; // Added Form components
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription as ShadcnFormDescription } from "@/components/ui/form";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
+import { apiClient } from "@/lib/apiClient";
+import type { Device } from "@/components/devices/DeviceCard"; // Assuming Device type is exported here for mockDevices
+
+// Define Routine type matching backend model
+interface Routine {
+  id: string;
+  userId: string;
+  name: string;
+  description?: string;
+  trigger: {
+    type: 'time' | 'wristband_event' | 'manual' | 'device_state_change';
+    details?: any;
+  };
+  actions: Array<{
+    deviceId: string;
+    deviceName: string; // Added for display
+    deviceType: Device['type']; // Added for display & logic
+    actionType?: string; // e.g., 'turn_on', 'set_brightness' - might be complex
+    targetState: string; // Simplified for now: "on", "off", "22°C", "brightness:70"
+    actionData?: any;
+  }>;
+  isEnabled: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  lastRun?: string;
+  icon?: React.ElementType; // For frontend
+  dataAiHint?: string; // For frontend
+}
 
 
 const triggerTypes = ["time", "wristband_event", "manual", "device_state_change"] as const;
+// Assuming Device type includes 'type'
 const actionDeviceTypes = ["light", "thermostat", "speaker", "blinds", "fan", "switch", "tv", "other"] as const;
+
 
 const actionSchema = z.object({
     deviceId: z.string().min(1, "Device selection is required."),
-    deviceName: z.string(),
-    deviceType: z.enum(actionDeviceTypes),
+    deviceName: z.string().min(1, "Device name is required."), // Keep for form state
+    deviceType: z.enum(actionDeviceTypes, { errorMap: () => ({ message: "Device type is required."}) }), // Keep for form state
     targetState: z.string().min(1, "Target state is required (e.g., on, 22°C, 50% volume)."),
   });
 
@@ -37,46 +66,71 @@ const routineFormSchema = z.object({
   triggerType: z.enum(triggerTypes, { required_error: "Trigger type is required." }),
   triggerDetails: z.string().optional(),
   actions: z.array(actionSchema).min(1, "At least one action is required."),
-  active: z.boolean().default(true),
+  isEnabled: z.boolean().default(true),
 });
 
 type RoutineFormData = z.infer<typeof routineFormSchema>;
 
-// Mock routines data
-const initialRoutines = [
-  { id: "1", name: "Morning Energizer", description: "Wake up lights, coffee machine on, morning news.", icon: Sun, active: true, dataAiHint: "morning sun", trigger: "Time - 07:00 AM", actionsSummary: "Lights On, Thermostat 22°C", lastRun: "Today, 07:00 AM" },
-  { id: "2", name: "Evening Wind-Down", description: "Dim lights, relaxing music, lock doors.", icon: Moon, active: true, dataAiHint: "night moon", trigger: "Time - 10:00 PM", actionsSummary: "Lights Dim, Speaker Play Relaxing", lastRun: "Yesterday, 10:00 PM" },
-  { id: "3", name: "Workout Mode", description: "Cool down room, energizing playlist, track workout.", icon: Zap, active: false, dataAiHint: "fitness gym", trigger: "Manual", actionsSummary: "Fan On, Speaker Play Workout", lastRun: "Never" },
-  { id: "4", name: "Good Night (Wristband)", description: "Turns off all lights when sleep is detected.", icon: ZapOff, active: true, dataAiHint: "sleep moon", trigger: "Wristband - Sleep Detected", actionsSummary: "All Lights Off", lastRun: "Today, 12:35 AM"}
+// Mock devices for action selection in modal
+const mockDevicesForActions: Array<Pick<Device, 'id' | 'name' | 'type'>> = [
+  { id: "light001", name: "Living Room Lamp", type: "light" },
+  { id: "thermostat001", name: "Main Thermostat", type: "thermostat" },
+  { id: "speaker001", name: "Kitchen Speaker", type: "speaker" },
+  { id: "blinds001", name: "Bedroom Blinds", type: "blinds" },
+  { id: "fan001", name: "Office Ceiling Fan", type: "fan" },
+  { id: "tv001", name: "Living Room TV", type: "tv" },
 ];
 
-// Mock devices for action selection in modal
-const mockDevicesForActions = [
-  { id: "lamp1", name: "Living Room Lamp", type: "light" as const },
-  { id: "thermo1", name: "Bedroom Thermostat", type: "thermostat" as const },
-  { id: "speaker1", name: "Office Speaker", type: "speaker" as const },
-  { id: "blinds1", name: "Kitchen Blinds", type: "blinds" as const },
-  { id: "fan1", name: "Ceiling Fan", type: "fan" as const },
-  { id: "tv1", name: "Smart TV", type: "tv" as const },
-];
+const routineIconMap: { [key: string]: React.ElementType } = {
+  sun: Sun,
+  moon: Moon,
+  zap: Zap,
+  clock: Clock,
+  zapoff: ZapOff,
+  default: ListChecks,
+};
 
 
 export default function RoutinesPage() {
-  const [routines, setRoutines] = useState(initialRoutines);
+  const [routines, setRoutines] = useState<Routine[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "morning" | "evening" | "custom">("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingRoutine, setEditingRoutine] = useState<RoutineFormData | null>(null);
+  const [editingRoutine, setEditingRoutine] = useState<Routine | null>(null);
   const { toast } = useToast();
 
   const form = useForm<RoutineFormData>({
     resolver: zodResolver(routineFormSchema),
-    defaultValues: { name: "", actions: [], active: true, triggerDetails: "" },
+    defaultValues: { name: "", actions: [], isEnabled: true, triggerDetails: "" },
   });
 
   const { fields: actionsFields, append: appendAction, remove: removeAction } = useFieldArray({
     control: form.control,
     name: "actions"
   });
+
+  const fetchRoutines = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const fetchedRoutines = await apiClient<Routine[]>('/routines');
+      setRoutines(fetchedRoutines.map(r => ({
+        ...r,
+        icon: routineIconMap[r.name.toLowerCase().includes("morning") ? "sun" : r.name.toLowerCase().includes("evening") || r.name.toLowerCase().includes("night") ? "moon" : r.trigger.type === 'manual' ? "zap" : "default"] || ListChecks,
+      })));
+    } catch (err) {
+      setError((err as Error).message || "Failed to fetch routines.");
+      toast({ title: "Error", description: (err as Error).message || "Could not fetch routines.", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRoutines();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
 
   const filteredRoutines = useMemo(() => {
@@ -86,66 +140,114 @@ export default function RoutinesPage() {
 
   const handleAddRoutine = () => {
     setEditingRoutine(null);
-    form.reset({ name: "", triggerType: undefined, triggerDetails: "", actions: [{deviceId: "", deviceName: "", deviceType: "light", targetState: ""}], active: true });
+    form.reset({ name: "", triggerType: "time", triggerDetails: "", actions: [{deviceId: "", deviceName: "", deviceType: "light", targetState: ""}], isEnabled: true });
     setIsModalOpen(true);
   };
 
-  const handleEditRoutine = (routine: (typeof routines)[0]) => {
-    const mockFormData: RoutineFormData = {
+  const handleEditRoutine = (routine: Routine) => {
+    setEditingRoutine(routine);
+    form.reset({
       id: routine.id,
       name: routine.name,
-      triggerType: routine.trigger.toLowerCase().includes("time") ? "time" : (routine.trigger.toLowerCase().includes("wristband") ? "wristband_event" : "manual"),
-      triggerDetails: routine.trigger.split(" - ")[1] || "",
-      actions: [
-        { deviceId: "lamp1", deviceName: "Living Room Lamp", deviceType: "light", targetState: "on"},
-        { deviceId: "thermo1", deviceName: "Bedroom Thermostat", deviceType: "thermostat", targetState: "22°C"}
-      ], // Simplified mock actions for demo
-      active: routine.active,
-    };
-    setEditingRoutine(mockFormData);
-    form.reset(mockFormData);
+      triggerType: routine.trigger.type,
+      triggerDetails: routine.trigger.details || "",
+      actions: routine.actions.map(a => ({ // Ensure actions are mapped correctly
+          deviceId: a.deviceId,
+          deviceName: a.deviceName || mockDevicesForActions.find(d => d.id === a.deviceId)?.name || 'Unknown Device',
+          deviceType: a.deviceType || mockDevicesForActions.find(d => d.id === a.deviceId)?.type || 'other',
+          targetState: a.targetState,
+      })),
+      isEnabled: routine.isEnabled,
+    });
     setIsModalOpen(true);
   };
 
-  const onSubmit = (data: RoutineFormData) => {
-    if (editingRoutine && editingRoutine.id) {
-      setRoutines(prev => prev.map(r => r.id === editingRoutine.id ? { ...r, ...data, icon: r.icon, description: data.actions.map(a => a.targetState).join(', ') } : r));
-      toast({ title: "Routine Updated", description: `${data.name} has been updated successfully.`});
-    } else {
-      const newRoutine = {
-        ...data,
-        id: String(Date.now()),
-        icon: Clock, // Default icon for new routines
-        description: data.actions.map(a => `${a.deviceName} to ${a.targetState}`).join(', '),
-        actionsSummary: data.actions.map(a => a.targetState).join(', ').substring(0,30) + "...",
-        trigger: `${data.triggerType} - ${data.triggerDetails || 'N/A'}`,
-        lastRun: "Never",
-        dataAiHint: data.triggerType,
-      };
-      setRoutines(prev => [...prev, newRoutine as any]); // Type assertion for mock data
-      toast({ title: "Routine Created", description: `${newRoutine.name} has been created.`});
-    }
-    setIsModalOpen(false);
-    form.reset();
-  };
+  const onSubmit = async (data: RoutineFormData) => {
+    const payload = {
+        name: data.name,
+        trigger: {
+            type: data.triggerType,
+            details: data.triggerDetails,
+        },
+        actions: data.actions.map(a => ({ // Ensure backend format
+            deviceId: a.deviceId,
+            // actionType: could be derived or fixed for now
+            targetState: a.targetState, // Send simplified targetState
+            // actionData: might need complex parsing from targetState
+        })),
+        isEnabled: data.isEnabled,
+        description: data.actions.map(a => `${mockDevicesForActions.find(d => d.id === a.deviceId)?.name || a.deviceId} to ${a.targetState}`).join(', '), // For backend model
+    };
 
-  const toggleRoutineActive = (routineId: string) => {
-    let routineName = "";
-    let newActiveState = false;
-    setRoutines(prev => prev.map(r => {
-      if (r.id === routineId) {
-        routineName = r.name;
-        newActiveState = !r.active;
-        return { ...r, active: newActiveState };
+    try {
+      if (editingRoutine && editingRoutine.id) {
+        await apiClient<Routine>(`/routines/${editingRoutine.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        });
+        toast({ title: "Routine Updated", description: `${data.name} has been updated successfully.`});
+      } else {
+        await apiClient<Routine>('/routines', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        toast({ title: "Routine Created", description: `${data.name} has been created.`});
       }
-      return r;
-    }));
-    toast({
-        title: `Routine ${newActiveState ? 'Activated' : 'Deactivated'}`,
-        description: `${routineName} is now ${newActiveState ? 'active' : 'inactive'}.`
-    });
+      fetchRoutines();
+      setIsModalOpen(false);
+      form.reset();
+    } catch (err) {
+      toast({ title: "Operation Failed", description: (err as Error).message, variant: "destructive" });
+    }
   };
 
+ const toggleRoutineActive = async (routine: Routine) => {
+    const newIsEnabled = !routine.isEnabled;
+    try {
+        await apiClient<Routine>(`/routines/${routine.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ isEnabled: newIsEnabled }),
+        });
+        toast({
+            title: `Routine ${newIsEnabled ? 'Activated' : 'Deactivated'}`,
+            description: `${routine.name} is now ${newIsEnabled ? 'active' : 'inactive'}.`
+        });
+        fetchRoutines(); // Refresh list
+    } catch (err) {
+        toast({ title: "Toggle Failed", description: (err as Error).message, variant: "destructive" });
+    }
+  };
+
+  const handleTriggerRoutine = async (routineId: string, routineName: string) => {
+    try {
+        await apiClient(`/routines/${routineId}/trigger`, { method: 'POST' });
+        toast({ title: "Routine Triggered", description: `${routineName} has been triggered successfully.` });
+        fetchRoutines(); // Refresh to update lastRun or other status
+    } catch (err) {
+        toast({ title: "Trigger Failed", description: (err as Error).message, variant: "destructive" });
+    }
+  };
+
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-200px)]">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-4 text-lg text-muted-foreground">Loading Routines...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-destructive">
+        <AlertTriangle className="h-12 w-12 mb-4" />
+        <h2 className="text-xl font-semibold mb-2">Error Fetching Routines</h2>
+        <p className="text-center mb-4">{error}</p>
+        <Button onClick={fetchRoutines}><PlusCircle className="mr-2 h-4 w-4"/>Retry</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -186,38 +288,45 @@ export default function RoutinesPage() {
         <CardContent>
           {filteredRoutines.length > 0 ? (
             <div className="space-y-4">
-              {filteredRoutines.map((routine) => (
-                <Card key={routine.id} className="p-4 hover:shadow-md transition-shadow group">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <routine.icon className={`h-8 w-8 ${routine.active ? 'text-primary' : 'text-muted-foreground'} group-hover:scale-110 transition-transform`} />
-                      <div>
-                        <h3 className="font-semibold">{routine.name}</h3>
-                        <p className="text-sm text-muted-foreground">{routine.description}</p>
-                        <div className="text-xs text-muted-foreground mt-1 space-x-2">
-                            <span>Trigger: {routine.trigger}</span>
-                            <span>Actions: {routine.actionsSummary}</span>
-                            <span>Last Run: {routine.lastRun}</span>
+              {filteredRoutines.map((routine) => {
+                 const RoutineIcon = routine.icon || ListChecks;
+                 const actionsSummary = routine.actions.map(a => `${a.deviceName || a.deviceId} to ${a.targetState}`).slice(0, 2).join(', ') + (routine.actions.length > 2 ? '...' : '');
+                 return (
+                    <Card key={routine.id} className="p-4 hover:shadow-md transition-shadow group">
+                    <div className="flex items-start sm:items-center justify-between flex-col sm:flex-row gap-4">
+                        <div className="flex items-center gap-4 flex-1">
+                        <RoutineIcon className={`h-8 w-8 ${routine.isEnabled ? 'text-primary' : 'text-muted-foreground'} group-hover:scale-110 transition-transform shrink-0`} />
+                        <div className="flex-1">
+                            <h3 className="font-semibold">{routine.name}</h3>
+                            <p className="text-sm text-muted-foreground truncate max-w-xs sm:max-w-md md:max-w-lg" title={routine.description}>{routine.description || "No description."}</p>
+                            <div className="text-xs text-muted-foreground mt-1 space-x-2 flex flex-wrap">
+                                <span>Trigger: {routine.trigger.type} - {routine.trigger.details || 'N/A'}</span>
+                                <span className="truncate" title={actionsSummary}>Actions: {actionsSummary || "No actions defined"}</span>
+                                <span>Last Run: {routine.lastRun || "Never"}</span>
+                            </div>
                         </div>
-                      </div>
+                        </div>
+                        <div className="flex items-center gap-2 self-end sm:self-center">
+                        <Button variant="outline" size="sm" onClick={() => handleTriggerRoutine(routine.id, routine.name)} disabled={!routine.isEnabled}>
+                            <Play className="mr-1 h-4 w-4"/> Run
+                        </Button>
+                        <Switch
+                            checked={routine.isEnabled}
+                            onCheckedChange={() => toggleRoutineActive(routine)}
+                            aria-label={`Toggle ${routine.name}`}
+                            id={`routine-toggle-${routine.id}`}
+                        />
+                        <Label htmlFor={`routine-toggle-${routine.id}`} className="text-sm cursor-pointer">
+                            {routine.isEnabled ? "Active" : "Inactive"}
+                        </Label>
+                        <Button variant="ghost" size="icon" onClick={() => handleEditRoutine(routine)}>
+                            <Edit3 className="h-4 w-4" />
+                        </Button>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                       <Switch
-                        checked={routine.active}
-                        onCheckedChange={() => toggleRoutineActive(routine.id)}
-                        aria-label={`Toggle ${routine.name}`}
-                        id={`routine-toggle-${routine.id}`}
-                      />
-                      <Label htmlFor={`routine-toggle-${routine.id}`} className="text-sm cursor-pointer">
-                        {routine.active ? "Active" : "Inactive"}
-                      </Label>
-                      <Button variant="ghost" size="icon" onClick={() => handleEditRoutine(routine)}>
-                        <Edit3 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </Card>
-              ))}
+                    </Card>
+                );
+              })}
             </div>
           ) : (
             <div className="text-center py-12">
@@ -259,7 +368,7 @@ export default function RoutinesPage() {
               <Card className="p-4 bg-secondary/30">
                 <CardHeader className="p-0 pb-3">
                     <CardTitle className="text-lg">Trigger</CardTitle>
-                    <CardDescription className="text-xs">How this routine will start.</CardDescription>
+                    <ShadcnFormDescription className="text-xs">How this routine will start.</ShadcnFormDescription>
                 </CardHeader>
                 <CardContent className="p-0 space-y-4">
                     <FormField
@@ -300,7 +409,7 @@ export default function RoutinesPage() {
               <Card className="p-4 bg-secondary/30">
                 <CardHeader className="p-0 pb-3">
                      <CardTitle className="text-lg">Actions</CardTitle>
-                    <CardDescription className="text-xs">What happens when the routine runs.</CardDescription>
+                    <ShadcnFormDescription className="text-xs">What happens when the routine runs.</ShadcnFormDescription>
                 </CardHeader>
                 <CardContent className="p-0 space-y-3">
                     {actionsFields.map((field, index) => (
@@ -341,7 +450,7 @@ export default function RoutinesPage() {
                             render={({ field }) => (
                                 <FormItem>
                                 <FormLabel>Target State</FormLabel>
-                                <FormControl><Input {...field} placeholder="e.g. on, 22°C, set_volume_50"/></FormControl>
+                                <FormControl><Input {...field} placeholder="e.g. on, 22°C, brightness:70"/></FormControl>
                                 <ShadcnFormDescription className="text-xs">Define the desired state or command for the device.</ShadcnFormDescription>
                                 <FormMessage />
                                 </FormItem>
@@ -364,11 +473,11 @@ export default function RoutinesPage() {
 
               <FormField
                   control={form.control}
-                  name="active"
+                  name="isEnabled"
                   render={({ field }) => (
                       <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm bg-background">
                       <div className="space-y-0.5">
-                          <FormLabel>Active</FormLabel>
+                          <FormLabel>Enabled</FormLabel>
                           <ShadcnFormDescription className="text-xs">
                             Enable or disable this routine.
                           </ShadcnFormDescription>
@@ -386,7 +495,10 @@ export default function RoutinesPage() {
 
               <DialogFooter className="pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-                <Button type="submit" disabled={form.formState.isSubmitting}>{editingRoutine ? "Save Changes" : "Create Routine"}</Button>
+                <Button type="submit" disabled={form.formState.isSubmitting}>
+                    {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {editingRoutine ? "Save Changes" : "Create Routine"}
+                </Button>
               </DialogFooter>
             </form>
           </Form>

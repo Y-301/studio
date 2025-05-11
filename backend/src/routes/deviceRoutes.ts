@@ -1,28 +1,26 @@
-
 // backend/src/routes/deviceRoutes.ts
-import express, { Request, Response } from 'express';
+import express from 'express';
+import * as deviceController from '../controllers/deviceController';
+
 const router = express.Router();
 
-// Example: Get all devices for a user
-router.get('/user/:userId', (req: Request, res: Response) => {
-  const userId = req.params.userId;
-  // TODO: Fetch devices for this user from database
-  res.json({ message: `Devices for user ${userId}`, data: [{id: "dev1", name: "Living Room Light", type: "light"}] });
-});
+// GET /api/devices - Get all devices for the authenticated user
+router.get('/', deviceController.getAllDevices);
 
-// Example: Get a specific device
-router.get('/:deviceId', (req: Request, res: Response) => {
-  const deviceId = req.params.deviceId;
-  // TODO: Fetch specific device from database
-  res.json({ message: `Details for device ${deviceId}`, data: {id: deviceId, name: "Living Room Light", type: "light", status: "on"} });
-});
+// POST /api/devices - Add a new device
+router.post('/', deviceController.createDevice);
 
-// Example: Update device status
-router.put('/:deviceId/status', (req: Request, res: Response) => {
-  const deviceId = req.params.deviceId;
-  const { status } = req.body;
-  // TODO: Update device status in database
-  res.json({ message: `Device ${deviceId} status updated to ${status}` });
-});
+// GET /api/devices/:deviceId - Get a specific device by ID
+router.get('/:deviceId', deviceController.getDeviceById);
 
-module.exports = router;
+// PUT /api/devices/:deviceId - Update an existing device
+router.put('/:deviceId', deviceController.updateDevice);
+
+// DELETE /api/devices/:deviceId - Delete a device
+router.delete('/:deviceId', deviceController.deleteDevice);
+
+// POST /api/devices/:deviceId/control - Control a device (e.g., on/off, brightness)
+router.post('/:deviceId/control', deviceController.controlDevice);
+
+
+export default router;

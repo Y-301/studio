@@ -1,7 +1,9 @@
 
 import type { Request, Response } from 'express';
 import { scheduleOneTimeAction } from '../services/schedulerService';
-import { log } from '../services/logService'; // Assuming a log service for more structured logging
+import { log } from '../services/logService';
+import * as deviceService from '../services/deviceService'; // Import device service
+import type { Device } from '../models/device';
 
 interface WakeUpParams {
   userId: string;
@@ -10,84 +12,113 @@ interface WakeUpParams {
   intensity: 'low' | 'medium' | 'high';
 }
 
+const MOCK_USER_ID = 'user1'; // TODO: Replace with actual user ID from auth
+
 // Helper function to simulate device actions
-const simulateDeviceAction = (userId: string, actionDescription: string) => {
+const simulateDeviceAction = async (userId: string, actionDescription: string, deviceType?: Device['type'], targetStatus?: string, targetSettings?: any) => {
   console.log(`[WakeUpController][User: ${userId}] Action: ${actionDescription}`);
   log('info', `Wake-up simulation action: ${actionDescription}`, userId, { component: 'WakeUpController' });
-  // In a real app, this would call a deviceService to interact with actual devices
+
+  if (deviceType) {
+    // Find devices of this type for the user
+    const userDevices = await deviceService.getDevicesByUserId(userId);
+    const targetDevices = userDevices.filter(d => d.type === deviceType);
+
+    for (const device of targetDevices) {
+      let updatePayload: Partial<Omit<Device, 'id'|'userId'|'createdAt'|'updatedAt'>> = {};
+      if (targetStatus) {
+        updatePayload.status = targetStatus;
+      }
+      if (targetSettings) {
+        updatePayload.settings = { ...device.settings, ...targetSettings };
+      }
+      if (Object.keys(updatePayload).length > 0) {
+        await deviceService.updateDevice(device.id, userId, updatePayload);
+        log('info', `Wake-up sim: Device ${device.name} (${device.id}) updated.`, userId, { component: 'WakeUpController', deviceId: device.id, ...updatePayload});
+      }
+    }
+  }
 };
 
 export const simulateWakeUp = async (req: Request, res: Response) => {
   try {
     const params = req.body as WakeUpParams;
+    const userId = params.userId || MOCK_USER_ID; // Use provided userId or mock
 
     // Basic validation
-    if (!params.userId || !params.time || !params.duration || !params.intensity) {
-      log('warn', 'Missing required wake-up parameters.', undefined, { body: req.body });
+    if (!params.time || !params.duration || !params.intensity) {
+      log('warn', 'Missing required wake-up parameters.', userId, { body: req.body });
       return res.status(400).json({ message: 'Missing required wake-up parameters.' });
     }
 
     const wakeUpTime = new Date(params.time);
     if (isNaN(wakeUpTime.getTime())) {
-      log('warn', `Invalid time format for wake-up: ${params.time}`, params.userId);
+      log('warn', `Invalid time format for wake-up: ${params.time}`, userId);
       return res.status(400).json({ message: 'Invalid time format.' });
     }
 
     const now = new Date();
     const delayMs = wakeUpTime.getTime() - now.getTime();
 
-    log('info', `Wake-up simulation request received for user ${params.userId}`, params.userId, { params });
+    log('info', `Wake-up simulation request received for user ${userId}`, userId, { params });
 
-    if (delayMs <= 5000) { // Consider times within 5 seconds as "immediate"
-      console.log(`[WakeUpController] Simulating immediate wake-up for user ${params.userId}. Duration: ${params.duration}m, Intensity: ${params.intensity}.`);
-      await log('info', `Starting immediate wake-up simulation for user ${params.userId}.`, params.userId, { duration: params.duration, intensity: params.intensity });
+    const performWakeUpActions = async () => {
+      console.log(`[WakeUpController] Executing wake-up sequence for user ${userId} at ${new Date().toISOString()}`);
+      log('info', `Executing wake-up for user ${userId}`, userId, { duration: params.duration, intensity: params.intensity });
 
-      // Simulate immediate actions
-      simulateDeviceAction(params.userId, 'Gradually turn on smart lights to low.');
-      simulateDeviceAction(params.userId, 'Play gentle wake-up soundscape at low volume.');
+      await simulateDeviceAction(userId, 'Gradually turn on smart lights to low.', 'light', 'on', { brightness: params.intensity === 'low' ? 30 : (params.intensity === 'medium' ? 40 : 20) });
+      await simulateDeviceAction(userId, 'Play gentle wake-up soundscape at low volume.', 'speaker', 'on', { volume: params.intensity === 'low' ? 20 : 30 });
       
+      // Schedule further actions based on intensity and duration
+      const thirdDurationMs = params.duration * 60 * 1000 / 3;
+      const halfDurationMs = params.duration * 60 * 1000 / 2;
+      const twoThirdsDurationMs = params.duration * 60 * 1000 * 2 / 3;
+      const fullDurationMs = params.duration * 60 * 1000;
+
       if (params.intensity === 'medium' || params.intensity === 'high') {
-        setTimeout(() => simulateDeviceAction(params.userId, 'Increase light intensity to medium.'), params.duration * 60 * 1000 / 3); // 1/3rd way through
-        setTimeout(() => simulateDeviceAction(params.userId, 'Slightly increase soundscape volume.'), params.duration * 60 * 1000 / 3);
+        setTimeout(async () => {
+          await simulateDeviceAction(userId, 'Increase light intensity to medium.', 'light', 'on', { brightness: params.intensity === 'medium' ? 60 : 50 });
+          await simulateDeviceAction(userId, 'Slightly increase soundscape volume.', 'speaker', 'on', { volume: params.intensity === 'medium' ? 40 : 50});
+        }, thirdDurationMs);
       }
       if (params.intensity === 'high') {
-        setTimeout(() => simulateDeviceAction(params.userId, 'Start coffee machine sequence.'), params.duration * 60 * 1000 / 2); // Halfway through
-        setTimeout(() => simulateDeviceAction(params.userId, 'Gradually open smart blinds.'), params.duration * 60 * 1000 * 2 / 3); // 2/3rd way through
+         setTimeout(async () => {
+            await simulateDeviceAction(userId, 'Start coffee machine sequence (simulated via a smart switch).', 'switch', 'on'); // Assuming coffee machine is on a smart switch
+         }, halfDurationMs);
+        setTimeout(async () => {
+            await simulateDeviceAction(userId, 'Gradually open smart blinds.', 'blinds', 'partially_open', { position: 50 }); // Assuming 50% open
+            await simulateDeviceAction(userId, 'Set thermostat to comfortable temperature.', 'thermostat', 'on', { temperature: 21 });
+        }, twoThirdsDurationMs);
       }
-      setTimeout(() => simulateDeviceAction(params.userId, 'Wake-up sequence complete. Lights at target. Soundscape fading.'), params.duration * 60 * 1000);
+      
+      setTimeout(async () => {
+        await simulateDeviceAction(userId, 'Wake-up sequence complete. Lights at target. Soundscape fading.', 'light', 'on', { brightness: params.intensity === 'low' ? 50 : (params.intensity === 'medium' ? 70 : 90) });
+        await simulateDeviceAction(userId, 'Fade out soundscape.', 'speaker', 'off', { volume: 0 });
+        if (params.intensity === 'high') {
+            await simulateDeviceAction(userId, 'Fully open smart blinds.', 'blinds', 'open', { position: 100 });
+        }
+        log('info', `Wake-up sequence completed for user ${userId}`, userId);
+      }, fullDurationMs);
+    };
 
 
-      return res.status(200).json({ message: `Immediate wake-up simulation initiated for user ${params.userId}.` });
+    if (delayMs <= 5000) { // Consider times within 5 seconds as "immediate"
+      console.log(`[WakeUpController] Simulating immediate wake-up for user ${userId}. Duration: ${params.duration}m, Intensity: ${params.intensity}.`);
+      await log('info', `Starting immediate wake-up simulation for user ${userId}.`, userId, { duration: params.duration, intensity: params.intensity });
+      
+      performWakeUpActions(); // Execute immediately
+
+      return res.status(200).json({ message: `Immediate wake-up simulation initiated for user ${userId}.` });
     }
     
     // Schedule the wake-up sequence for the future
-    const scheduledJobId = scheduleOneTimeAction(delayMs, () => {
-      console.log(`[WakeUpController] Executing scheduled wake-up for user ${params.userId} at ${new Date().toISOString()}`);
-      log('info', `Executing scheduled wake-up for user ${params.userId}`, params.userId, { duration: params.duration, intensity: params.intensity });
-      
-      // Simulate actions for scheduled wake-up
-      simulateDeviceAction(params.userId, 'Gradually turn on smart lights to low (scheduled).');
-      simulateDeviceAction(params.userId, 'Play gentle wake-up soundscape at low volume (scheduled).');
-      
-      if (params.intensity === 'medium' || params.intensity === 'high') {
-         // These inner setTimeouts are relative to the scheduled wake-up time
-        setTimeout(() => simulateDeviceAction(params.userId, 'Increase light intensity to medium (scheduled).'), params.duration * 60 * 1000 / 3);
-        setTimeout(() => simulateDeviceAction(params.userId, 'Slightly increase soundscape volume (scheduled).'), params.duration * 60 * 1000 / 3);
-      }
-      if (params.intensity === 'high') {
-        setTimeout(() => simulateDeviceAction(params.userId, 'Start coffee machine sequence (scheduled).'), params.duration * 60 * 1000 / 2);
-        setTimeout(() => simulateDeviceAction(params.userId, 'Gradually open smart blinds (scheduled).'), params.duration * 60 * 1000 * 2 / 3);
-      }
-      setTimeout(() => simulateDeviceAction(params.userId, 'Scheduled wake-up sequence complete. Lights at target. Soundscape fading.'), params.duration * 60 * 1000);
+    const scheduledJobId = scheduleOneTimeAction(delayMs, performWakeUpActions);
 
-       // TODO: Potentially send a notification to the user via a notification service
-    });
-
-    console.log(`[WakeUpController] Wake-up for user ${params.userId} scheduled for ${wakeUpTime.toISOString()}. Job ID: ${scheduledJobId}`);
-    await log('info', `Wake-up simulation scheduled for user ${params.userId} at ${wakeUpTime.toISOString()}. Job ID: ${scheduledJobId}`, params.userId);
+    console.log(`[WakeUpController] Wake-up for user ${userId} scheduled for ${wakeUpTime.toISOString()}. Job ID: ${scheduledJobId}`);
+    await log('info', `Wake-up simulation scheduled for user ${userId} at ${wakeUpTime.toISOString()}. Job ID: ${scheduledJobId}`, userId);
     
     res.status(200).json({ 
-      message: `Wake-up simulation scheduled successfully for user ${params.userId} at ${wakeUpTime.toLocaleTimeString()}.`,
+      message: `Wake-up simulation scheduled successfully for user ${userId} at ${wakeUpTime.toLocaleTimeString()}.`,
       jobId: scheduledJobId 
     });
 
