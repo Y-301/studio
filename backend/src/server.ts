@@ -1,3 +1,4 @@
+
 // backend/src/server.ts
 import express, { type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
@@ -10,12 +11,14 @@ import { log } from './services/logService';
 
 const app = express();
 
-// --- Simulation Configuration ---
-const SIMULATION_USER_ID = 'user1'; // Default user for simulations
-const DEVICE_SIMULATION_INTERVAL_MS = 15000; // Simulate device changes every 15 seconds
-const WRISTBAND_SIMULATION_INTERVAL_MS = 5000; // Simulate wristband data every 5 seconds
-const ENABLE_DEVICE_SIMULATION = true; // Toggle device simulation
-const ENABLE_WRISTBAND_SIMULATION = true; // Toggle wristband simulation
+// --- Simulation Configuration (loaded from config.ts) ---
+const {
+  userId: SIMULATION_USER_ID,
+  deviceIntervalMs: DEVICE_SIMULATION_INTERVAL_MS,
+  wristbandIntervalMs: WRISTBAND_SIMULATION_INTERVAL_MS,
+  enableDeviceSimulation: ENABLE_DEVICE_SIMULATION,
+  enableWristbandSimulation: ENABLE_WRISTBAND_SIMULATION,
+} = config.simulation;
 // --- End Simulation Configuration ---
 
 
@@ -38,10 +41,29 @@ app.get('/', (req: Request, res: Response) => {
   res.send('WakeSync Backend is alive and pulsating with simulated data!');
 });
 
+// API Health Check / Status Endpoint
+app.get('/status', (req: Request, res: Response) => {
+  // Basic health check. Could be expanded to include DB status, simulation status etc.
+  res.status(200).json({
+    status: 'OK',
+    message: 'WakeSync Backend is healthy.',
+    timestamp: new Date().toISOString(),
+    nodeEnv: config.nodeEnv,
+    simulation: {
+      deviceSimulation: ENABLE_DEVICE_SIMULATION ? 'enabled' : 'disabled',
+      wristbandSimulation: ENABLE_WRISTBAND_SIMULATION ? 'enabled' : 'disabled',
+      simulatingForUser: SIMULATION_USER_ID,
+    }
+  });
+});
+
+
 // Error Handling Middleware
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   log('error', `Unhandled error: ${err.message}`, undefined, { component: 'GlobalErrorHandler', stack: err.stack, path: req.path });
-  res.status(500).json({ message: 'Something went wrong on the server!' });
+  // Sanitize error message for production
+  const errorMessage = config.isProduction ? 'An internal server error occurred.' : err.message;
+  res.status(500).json({ message: 'Something went wrong on the server!', error: errorMessage });
 });
 
 
@@ -50,7 +72,7 @@ initializeScheduler();
 log('info', 'Scheduler initialized.', undefined, {component: 'ServerStartup'});
 
 // Start Data Simulation
-if (ENABLE_DEVICE_SIMULATION && process.env.NODE_ENV !== 'test') {
+if (ENABLE_DEVICE_SIMULATION && !config.isProduction) { // Typically, don't run full simulations in prod
   setInterval(async () => {
     try {
       log('debug', `Triggering device simulation for user ${SIMULATION_USER_ID}`, SIMULATION_USER_ID, {component: 'ServerSimulationLoop'});
@@ -61,11 +83,11 @@ if (ENABLE_DEVICE_SIMULATION && process.env.NODE_ENV !== 'test') {
   }, DEVICE_SIMULATION_INTERVAL_MS);
   log('info', `Device data simulation started for user ${SIMULATION_USER_ID}. Interval: ${DEVICE_SIMULATION_INTERVAL_MS / 1000}s.`, undefined, {component: 'ServerStartup'});
 } else {
-  log('info', `Device data simulation is ${ENABLE_DEVICE_SIMULATION ? 'DISABLED (test environment)' : 'DISABLED (config)'}.`, undefined, {component: 'ServerStartup'});
+  log('info', `Device data simulation is ${ENABLE_DEVICE_SIMULATION ? (config.isProduction ? 'DISABLED (production env)' : 'ENABLED') : 'DISABLED (config)'}.`, undefined, {component: 'ServerStartup'});
 }
 
 
-if (ENABLE_WRISTBAND_SIMULATION && process.env.NODE_ENV !== 'test') {
+if (ENABLE_WRISTBAND_SIMULATION && !config.isProduction) { // Typically, don't run full simulations in prod
   setInterval(async () => {
     try {
       log('debug', `Triggering wristband simulation for user ${SIMULATION_USER_ID}`, SIMULATION_USER_ID, {component: 'ServerSimulationLoop'});
@@ -76,7 +98,7 @@ if (ENABLE_WRISTBAND_SIMULATION && process.env.NODE_ENV !== 'test') {
   }, WRISTBAND_SIMULATION_INTERVAL_MS);
   log('info', `Wristband data simulation started for user ${SIMULATION_USER_ID}. Interval: ${WRISTBAND_SIMULATION_INTERVAL_MS / 1000}s.`, undefined, {component: 'ServerStartup'});
 } else {
-   log('info', `Wristband data simulation is ${ENABLE_WRISTBAND_SIMULATION ? 'DISABLED (test environment)' : 'DISABLED (config)'}.`, undefined, {component: 'ServerStartup'});
+   log('info', `Wristband data simulation is ${ENABLE_WRISTBAND_SIMULATION ? (config.isProduction ? 'DISABLED (production env)' : 'ENABLED') : 'DISABLED (config)'}.`, undefined, {component: 'ServerStartup'});
 }
 
 
@@ -85,23 +107,17 @@ const server = app.listen(config.port, () => {
 });
 
 // Graceful Shutdown
-process.on('SIGTERM', () => {
-  log('info', 'SIGTERM signal received: closing HTTP server', undefined, { component: 'ServerShutdown' });
+const gracefulShutdown = (signal: string) => {
+  log('info', `${signal} signal received: closing HTTP server`, undefined, { component: 'ServerShutdown' });
   clearAllScheduledCronTasks(); // Clear cron jobs
   server.close(() => {
     log('info', 'HTTP server closed', undefined, { component: 'ServerShutdown' });
     // Add any other cleanup here (e.g. database connections)
     process.exit(0);
   });
-});
+};
 
-process.on('SIGINT', () => {
-  log('info', 'SIGINT signal received: closing HTTP server', undefined, { component: 'ServerShutdown' });
-  clearAllScheduledCronTasks(); // Clear cron jobs
-  server.close(() => {
-    log('info', 'HTTP server closed', undefined, { component: 'ServerShutdown' });
-    process.exit(0);
-  });
-});
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 export default app;
