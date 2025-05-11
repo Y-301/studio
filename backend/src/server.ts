@@ -4,7 +4,7 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import cors from 'cors';
 import config from './config'; 
 import mainRouter from './routes'; 
-import { initializeScheduler, clearAllScheduledCronTasks } from './services/schedulerService'; 
+import { initializeScheduler, clearAllScheduledCronTasks, getScheduledTasksStatus } from './services/schedulerService'; 
 import * as deviceService from './services/deviceService'; 
 import * as wristbandService from './services/wristbandService'; 
 import { log } from './services/logService'; 
@@ -13,11 +13,11 @@ const app = express();
 
 // --- Simulation Configuration (loaded from config.ts) ---
 const {
-  userId: SIMULATION_USER_ID,
-  deviceIntervalMs: DEVICE_SIMULATION_INTERVAL_MS,
-  wristbandIntervalMs: WRISTBAND_SIMULATION_INTERVAL_MS,
-  enableDeviceSimulation: ENABLE_DEVICE_SIMULATION,
-  enableWristbandSimulation: ENABLE_WRISTBAND_SIMULATION,
+  simulatedUserId,
+  deviceSimulationIntervalMs,
+  wristbandSimulationIntervalMs,
+  enableDeviceSimulation,
+  enableWristbandSimulation,
 } = config.simulation;
 // --- End Simulation Configuration ---
 
@@ -43,16 +43,20 @@ app.get('/', (req: Request, res: Response) => {
 
 // API Health Check / Status Endpoint
 app.get('/status', (req: Request, res: Response) => {
-  // Basic health check. Could be expanded to include DB status, simulation status etc.
   res.status(200).json({
     status: 'OK',
     message: 'WakeSync Backend is healthy.',
     timestamp: new Date().toISOString(),
     nodeEnv: config.nodeEnv,
     simulation: {
-      deviceSimulation: ENABLE_DEVICE_SIMULATION ? 'enabled' : 'disabled',
-      wristbandSimulation: ENABLE_WRISTBAND_SIMULATION ? 'enabled' : 'disabled',
-      simulatingForUser: SIMULATION_USER_ID,
+      deviceSimulationActive: enableDeviceSimulation && !config.isProduction,
+      wristbandSimulationActive: enableWristbandSimulation && !config.isProduction,
+      simulatingForUser: simulatedUserId,
+      deviceSimulationIntervalMs,
+      wristbandSimulationIntervalMs,
+    },
+    scheduler: {
+      cronTasksStatus: getScheduledTasksStatus(), // Get status from schedulerService
     }
   });
 });
@@ -72,33 +76,37 @@ initializeScheduler();
 log('info', 'Scheduler initialized.', undefined, {component: 'ServerStartup'});
 
 // Start Data Simulation
-if (ENABLE_DEVICE_SIMULATION && !config.isProduction) { // Typically, don't run full simulations in prod
+// Only run simulations in development mode by default, or if explicitly enabled and not in production.
+const runDeviceSimulation = enableDeviceSimulation && !config.isProduction;
+const runWristbandSimulation = enableWristbandSimulation && !config.isProduction;
+
+if (runDeviceSimulation) {
+  log('info', `Device data simulation starting for user ${simulatedUserId}. Interval: ${deviceSimulationIntervalMs / 1000}s.`, undefined, {component: 'ServerStartup'});
   setInterval(async () => {
     try {
-      log('debug', `Triggering device simulation for user ${SIMULATION_USER_ID}`, SIMULATION_USER_ID, {component: 'ServerSimulationLoop'});
-      await deviceService.simulateDeviceChanges(SIMULATION_USER_ID);
+      // log('debug', `Triggering device simulation for user ${simulatedUserId}`, simulatedUserId, {component: 'ServerSimulationLoop'});
+      await deviceService.simulateDeviceChanges(simulatedUserId);
     } catch (err) {
-      log('error', 'Error in device simulation interval', SIMULATION_USER_ID, { error: (err as Error).message, stack: (err as Error).stack, component: 'ServerSimulationLoop' });
+      log('error', 'Error in device simulation interval', simulatedUserId, { error: (err as Error).message, stack: (err as Error).stack, component: 'ServerSimulationLoop' });
     }
-  }, DEVICE_SIMULATION_INTERVAL_MS);
-  log('info', `Device data simulation started for user ${SIMULATION_USER_ID}. Interval: ${DEVICE_SIMULATION_INTERVAL_MS / 1000}s.`, undefined, {component: 'ServerStartup'});
+  }, deviceSimulationIntervalMs);
 } else {
-  log('info', `Device data simulation is ${ENABLE_DEVICE_SIMULATION ? (config.isProduction ? 'DISABLED (production env)' : 'ENABLED') : 'DISABLED (config)'}.`, undefined, {component: 'ServerStartup'});
+  log('info', `Device data simulation is DISABLED. (Enabled: ${enableDeviceSimulation}, Production: ${config.isProduction})`, undefined, {component: 'ServerStartup'});
 }
 
 
-if (ENABLE_WRISTBAND_SIMULATION && !config.isProduction) { // Typically, don't run full simulations in prod
+if (runWristbandSimulation) {
+  log('info', `Wristband data simulation starting for user ${simulatedUserId}. Interval: ${wristbandSimulationIntervalMs / 1000}s.`, undefined, {component: 'ServerStartup'});
   setInterval(async () => {
     try {
-      log('debug', `Triggering wristband simulation for user ${SIMULATION_USER_ID}`, SIMULATION_USER_ID, {component: 'ServerSimulationLoop'});
-      await wristbandService.simulateAndProcessWristbandData(SIMULATION_USER_ID);
+      // log('debug', `Triggering wristband simulation for user ${simulatedUserId}`, simulatedUserId, {component: 'ServerSimulationLoop'});
+      await wristbandService.simulateAndProcessWristbandData(simulatedUserId);
     } catch (err) {
-      log('error', 'Error in wristband simulation interval', SIMULATION_USER_ID, { error: (err as Error).message, stack: (err as Error).stack, component: 'ServerSimulationLoop' });
+      log('error', 'Error in wristband simulation interval', simulatedUserId, { error: (err as Error).message, stack: (err as Error).stack, component: 'ServerSimulationLoop' });
     }
-  }, WRISTBAND_SIMULATION_INTERVAL_MS);
-  log('info', `Wristband data simulation started for user ${SIMULATION_USER_ID}. Interval: ${WRISTBAND_SIMULATION_INTERVAL_MS / 1000}s.`, undefined, {component: 'ServerStartup'});
+  }, wristbandSimulationIntervalMs);
 } else {
-   log('info', `Wristband data simulation is ${ENABLE_WRISTBAND_SIMULATION ? (config.isProduction ? 'DISABLED (production env)' : 'ENABLED') : 'DISABLED (config)'}.`, undefined, {component: 'ServerStartup'});
+   log('info', `Wristband data simulation is DISABLED. (Enabled: ${enableWristbandSimulation}, Production: ${config.isProduction})`, undefined, {component: 'ServerStartup'});
 }
 
 
@@ -121,3 +129,4 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 export default app;
+

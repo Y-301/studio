@@ -1,3 +1,4 @@
+
 // backend/src/services/schedulerService.ts
 import cron from 'node-cron';
 import type { Routine } from '../models/routine';
@@ -5,6 +6,7 @@ import { getAllItems as getAllRoutinesFromDb } from '../utils/jsonDb';
 import { log } from './logService';
 import * as deviceService from './deviceService';
 import * as routineService from './routineService'; // To update routine's lastRun
+import type { Device } from '../models/device'; // Explicit import for Device type
 
 const ROUTINES_DB_FILE = 'routines.json';
 
@@ -34,8 +36,10 @@ const executeRoutineActions = async (routine: Routine) => {
       if (action.targetState.toLowerCase() === 'on' || action.targetState.toLowerCase() === 'off') {
         statusToSet = action.targetState.toLowerCase() as 'on' | 'off';
       } else if (deviceToControl.type === 'thermostat' && !isNaN(parseFloat(action.targetState))) {
-        statusToSet = parseFloat(action.targetState) > 0 ? String(parseFloat(action.targetState)) : 'off'; 
-        settingsToSet = { temperature: parseFloat(action.targetState) };
+        // For thermostats, targetState might be just the temperature. Status should reflect if it's active.
+        const targetTemp = parseFloat(action.targetState);
+        statusToSet = String(targetTemp); // Status is the temperature string
+        settingsToSet = { temperature: targetTemp };
       } else if (deviceToControl.type === 'light' && action.targetState.toLowerCase().includes('brightness')) {
         const brightnessMatch = action.targetState.match(/brightness[\s:]*(\d+)/i);
         if (brightnessMatch && brightnessMatch[1]) {
@@ -78,6 +82,7 @@ const executeRoutineActions = async (routine: Routine) => {
   }
   // Update routine's lastRun timestamp
   try {
+    // Use the dedicated routineService to update, ensuring consistency
     await routineService.updateRoutine(routine.id, routine.userId, { lastRun: new Date().toISOString() });
     log('info', `Routine "${routine.name}" execution finished and lastRun updated.`, routine.userId, { routineId: routine.id, component: 'SchedulerService' });
   } catch(err) {
@@ -93,12 +98,38 @@ export const scheduleRoutine = (routine: Routine) => {
     let cronExpression: string | undefined;
     let timezone: string | undefined;
 
-    if (typeof timeDetails === 'string' && /^\d{2}:\d{2}$/.test(timeDetails)) { // Simple "HH:MM" string
-        const [hour, minute] = timeDetails.split(':');
-        cronExpression = `${minute} ${hour} * * *`;
-    } else if (typeof timeDetails === 'object' && timeDetails.time && /^\d{2}:\d{2}$/.test(timeDetails.time)) { // Object with time and optional timezone
-        const [hour, minute] = timeDetails.time.split(':');
-        cronExpression = `${minute} ${hour} * * *`;
+    // Improved time parsing: "07:00 AM" -> "0 7 * * *"
+    if (typeof timeDetails === 'string') {
+        const timeMatch = timeDetails.match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/i);
+        if (timeMatch) {
+            let hour = parseInt(timeMatch[1]);
+            const minute = parseInt(timeMatch[2]);
+            const period = timeMatch[3]?.toUpperCase();
+
+            if (period === 'PM' && hour < 12) hour += 12;
+            if (period === 'AM' && hour === 12) hour = 0; // Midnight case
+
+            if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+                cronExpression = `${minute} ${hour} * * *`;
+            }
+        } else if (/^\d{1,2}\s\d{1,2}\s\*\s\*\s\*$/.test(timeDetails)) { // Basic cron string support "M H * * *"
+            cronExpression = timeDetails;
+        }
+    } else if (typeof timeDetails === 'object' && timeDetails.time) { 
+        // Handle object format, e.g., { time: "07:00 AM", timezone: "America/New_York" }
+        const timeMatch = timeDetails.time.match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/i);
+        if (timeMatch) {
+            let hour = parseInt(timeMatch[1]);
+            const minute = parseInt(timeMatch[2]);
+            const period = timeMatch[3]?.toUpperCase();
+
+            if (period === 'PM' && hour < 12) hour += 12;
+            if (period === 'AM' && hour === 12) hour = 0;
+
+             if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+                cronExpression = `${minute} ${hour} * * *`;
+            }
+        }
         timezone = timeDetails.timezone;
     }
 
@@ -119,7 +150,18 @@ export const scheduleRoutine = (routine: Routine) => {
     const task = cron.schedule(cronExpression, async () => {
       log('info', `Triggering routine "${routine.name}" (ID: ${routine.id}) at ${new Date().toLocaleTimeString()}`, routine.userId, { routineId: routine.id, component: 'SchedulerService' });
       try {
-        await executeRoutineActions(routine);
+        // Fetch the latest version of the routine before executing
+        // This ensures that any changes made to the routine since scheduling are applied
+        const currentRoutine = await routineService.getRoutineByIdAndUserId(routine.id, routine.userId);
+        if (currentRoutine && currentRoutine.isEnabled) {
+            await executeRoutineActions(currentRoutine);
+        } else if (currentRoutine && !currentRoutine.isEnabled) {
+            log('info', `Routine "${routine.name}" (ID: ${routine.id}) was triggered but is disabled. Skipping execution.`, routine.userId, {routineId: routine.id, component: 'SchedulerService'});
+            unscheduleRoutine(routine.id); // Unschedule if it became disabled
+        } else {
+            log('warn', `Routine "${routine.name}" (ID: ${routine.id}) not found or unauthorized during scheduled execution. Unscheduling.`, routine.userId, {routineId: routine.id, component: 'SchedulerService'});
+            unscheduleRoutine(routine.id);
+        }
       } catch (err) {
         log('error', `Unhandled error during scheduled execution of routine ${routine.id}: ${(err as Error).message}`, routine.userId, {component: 'SchedulerService', stack: (err as Error).stack, routineId: routine.id });
       }
@@ -144,7 +186,7 @@ export const unscheduleRoutine = (routineId: string) => {
 
 
 export const initializeScheduler = async () => {
-  log('info', 'Initializing scheduler...', undefined, { component: 'SchedulerService' });
+  log('info', 'Initializing scheduler and loading routines...', undefined, { component: 'SchedulerService' });
   try {
     const routines = await getAllRoutinesFromDb<Routine>(ROUTINES_DB_FILE);
     let scheduledCount = 0;
@@ -154,7 +196,7 @@ export const initializeScheduler = async () => {
         scheduledCount++;
       }
     });
-    log('info', `Scheduler initialized. ${scheduledCount} time-based routines processed for scheduling. Total cron tasks: ${scheduledCronTasks.size}`, undefined, { component: 'SchedulerService' });
+    log('info', `Scheduler initialized. ${scheduledCount} time-based routines processed for scheduling. Total active cron tasks: ${scheduledCronTasks.size}`, undefined, { component: 'SchedulerService' });
   } catch (error) {
     log('error', `Error initializing scheduler: ${(error as Error).message}`, undefined, { component: 'SchedulerService', stack: (error as Error).stack });
   }
@@ -203,4 +245,42 @@ export const clearAllOneTimeTimeouts = () => {
     log('info', 'Clearing all one-time timeouts.', undefined, { component: 'SchedulerService' });
     scheduledOneTimeTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
     scheduledOneTimeTimeouts.clear();
+};
+
+// Function to get status of scheduled cron tasks (for /status endpoint)
+export const getScheduledTasksStatus = () => {
+    const tasks: Array<{id: string, nextRun?: Date | string, status: string}> = [];
+    scheduledCronTasks.forEach((task, id) => {
+        try {
+            // Note: `task.nextDate()` or similar method depends on `node-cron` version/API.
+            // Assuming a hypothetical `nextDate()` method or similar property.
+            // If node-cron doesn't expose next run directly, this part might be complex or unavailable.
+            // For now, let's assume a placeholder.
+            let nextRun: Date | string = "N/A (API might not support)";
+            // If task object has a method like `nextDates(1)[0]` for cron >=3.0.0
+            // Or if it's an older version, direct access might be different.
+            // For example, in some versions, you might need to parse the cron string yourself.
+            // This is a simplification.
+            if (typeof (task as any).nextDates === 'function') { // Check if nextDates method exists
+                const nextDateResult = (task as any).nextDates(1);
+                if (nextDateResult && nextDateResult.length > 0) {
+                    nextRun = new Date(nextDateResult[0].toJSDate()); // Assuming toJSDate() for Luxon DateTime from cron-schedule
+                }
+            }
+
+
+            tasks.push({
+                id,
+                nextRun: nextRun instanceof Date ? nextRun.toISOString() : nextRun,
+                status: 'Scheduled' // node-cron tasks are either running based on schedule or stopped.
+            });
+        } catch(e) {
+             tasks.push({ id, nextRun: 'Error fetching next run', status: 'Error' });
+        }
+    });
+    return {
+        activeCronTasksCount: scheduledCronTasks.size,
+        activeOneTimeTimeoutsCount: scheduledOneTimeTimeouts.size,
+        tasks,
+    };
 };

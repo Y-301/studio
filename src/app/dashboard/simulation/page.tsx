@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WakeUpSimulator } from "@/components/simulation/WakeUpSimulator";
 import { DeviceCard, type Device } from '@/components/devices/DeviceCard';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SlidersHorizontal, House, Eye, Edit, PlusSquare, Trash2, ChevronsUpDown, Lightbulb, Thermometer, Speaker, LayoutPanelLeft, Palette, GripVertical, Save, Loader2, Move, Plus, Maximize2, Minimize2, Tv, Wind, Power, HardDrive, Zap } from "lucide-react"; // Added more icons
+import { SlidersHorizontal, House, Eye, Edit, PlusSquare, Trash2, ChevronsUpDown, Lightbulb, Thermometer, Speaker, LayoutPanelLeft, Palette, GripVertical, Save, Loader2, Move, Plus, Maximize2, Minimize2, Tv, Wind, Power, HardDrive, Zap, AlertTriangle } from "lucide-react"; 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,36 +15,35 @@ import { useToast } from '@/hooks/use-toast';
 import { Slider } from "@/components/ui/slider";
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { apiClient } from '@/lib/apiClient'; // Import API client
-import type { FloorPlanData as FloorPlanDataFromAPI, APIPlacedDevice, APIFloorPlanRoom } from '@/backend/src/services/simulationService'; // Import types from backend
+import { apiClient } from '@/lib/apiClient'; 
+import type { FloorPlanData as FloorPlanDataFromAPI, APIPlacedDevice, APIFloorPlanRoom } from '@/backend/src/services/simulationService'; 
 
-// Mapping from device type string to Lucide icon component
 const deviceIconMapSim: { [key: string]: React.ElementType } = {
   light: Lightbulb,
   thermostat: Thermometer,
   blinds: LayoutPanelLeft,
   speaker: Speaker,
-  sensor: HardDrive, // Using HardDrive as a generic sensor icon
+  sensor: HardDrive, 
   tv: Tv,
   fan: Wind,
   switch: Power,
-  other: Palette, // Palette as a generic 'other' icon
+  other: Palette, 
 };
 
 
 // Mock devices for simulation - these could be fetched from the backend eventually
-const mockSimDevices: Array<Pick<Device, 'id' | 'name' | 'type' | 'icon' | 'status' | 'room' | 'brightness' | 'volume' | 'dataAiHint' | 'connectionDetails'>> = [
-  { id: "light001", name: "Living Room Main Light", type: "light", status: "Off", room: "Living Room", icon: Lightbulb, dataAiHint: "ceiling light", brightness: 80, connectionDetails: "" },
-  { id: "thermostat001", name: "Living Room Thermostat", type: "thermostat", status: "20°C", room: "Living Room", icon: Thermometer, dataAiHint: "smart thermostat", connectionDetails: "" },
-  { id: "speaker001", name: "Kitchen Speaker", type: "speaker", status: "Paused", room: "Kitchen", icon: Speaker, dataAiHint: "kitchen speaker", volume: 30, connectionDetails: "" },
-  { id: "blinds001", name: "Bedroom Blinds", type: "blinds", status: "Closed", room: "Bedroom", icon: LayoutPanelLeft, dataAiHint: "bedroom blinds", connectionDetails: "" },
-  { id: "sensor001", name: "New Sensor", type: "sensor", status: "Waiting", room: "Unassigned", icon: Zap, dataAiHint: "iot sensor", connectionDetails: "" }, // Using Zap for sensor as HardDrive might be too specific
-  { id: "tv001", name: "Living Room TV", type: "tv", status: "Off", room: "Living Room", icon: Tv, dataAiHint: "smart television", connectionDetails: "" },
-  { id: "fan001", name: "Office Ceiling Fan", type: "fan", status: "off", room: "Office", icon: Wind, dataAiHint: "ceiling fan", connectionDetails: "" },
+const mockSimDevices: Array<Pick<Device, 'id' | 'name' | 'type' | 'icon' | 'status' | 'room' | 'brightness' | 'volume' | 'dataAiHint' | 'connectionDetails' | 'settings'>> = [
+  { id: "light001", name: "Living Room Main Light", type: "light", status: "Off", room: "Living Room", icon: Lightbulb, dataAiHint: "ceiling light", brightness: 80, connectionDetails: "", settings: { brightness: 80} },
+  { id: "thermostat001", name: "Living Room Thermostat", type: "thermostat", status: "20°C", room: "Living Room", icon: Thermometer, dataAiHint: "smart thermostat", connectionDetails: "", settings: {temperature: 20} },
+  { id: "speaker001", name: "Kitchen Speaker", type: "speaker", status: "Paused", room: "Kitchen", icon: Speaker, dataAiHint: "kitchen speaker", volume: 30, connectionDetails: "", settings: {volume: 30} },
+  { id: "blinds001", name: "Bedroom Blinds", type: "blinds", status: "Closed", room: "Bedroom", icon: LayoutPanelLeft, dataAiHint: "bedroom blinds", connectionDetails: "", settings: {position: 0} },
+  { id: "sensor001", name: "Nursery Temp Sensor", type: "sensor", status: "21°C", room: "Nursery", icon: Zap, dataAiHint: "iot sensor", connectionDetails: "", settings: {last_reading: 21, unit: "C"} }, 
+  { id: "tv001", name: "Living Room TV", type: "tv", status: "Off", room: "Living Room", icon: Tv, dataAiHint: "smart television", connectionDetails: "", settings: {inputSource: "HDMI1", volume: 25} },
+  { id: "fan001", name: "Office Ceiling Fan", type: "fan", status: "off", room: "Office", icon: Wind, dataAiHint: "ceiling fan", connectionDetails: "", settings: {speed: "low"} },
 ];
 
-const initialMockRooms = ["Living Room", "Bedroom", "Kitchen", "Office", "Unassigned"];
-const initialMockFloors = ["Ground Floor", "First Floor"];
+const initialMockRooms = ["Living Room", "Bedroom", "Kitchen", "Office", "Unassigned", "Nursery"];
+const initialMockFloors = ["Ground Floor", "First Floor", "Basement"];
 
 
 interface FloorPlanRoomFE extends APIFloorPlanRoom {}
@@ -67,7 +66,7 @@ interface DraggingInfo {
 
 type ResizeHandleType = 'n' | 's' | 'e' | 'w' | 'nw' | 'ne' | 'sw' | 'se';
 interface ResizingInfo {
-  id: string; // Room ID
+  id: string; 
   initialXPercent: number;
   initialYPercent: number;
   initialWidthPercent: number;
@@ -102,13 +101,19 @@ export default function SimulationPage() {
   const [resizingRoomInfo, setResizingRoomInfo] = useState<ResizingInfo | null>(null);
   const [isLoadingPlan, setIsLoadingPlan] = useState(true);
   const [isSavingPlan, setIsSavingPlan] = useState(false);
+  const [planError, setPlanError] = useState<string | null>(null);
 
 
   useEffect(() => {
-    const loadPlan = async () => {
+    loadPlan();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); 
+
+  const loadPlan = async () => {
       setIsLoadingPlan(true);
+      setPlanError(null);
       try {
-        // The backend controller for /simulation/floorplan uses a mock user ID for now.
+        // The backend controller for /simulation/floorplan uses a mock user ID 'user1' for now.
         const data = await apiClient<FloorPlanDataFromAPI>('/simulation/floorplan');
 
         setFloorPlanRooms(data.rooms.map(room => ({ ...room })));
@@ -126,19 +131,21 @@ export default function SimulationPage() {
           };
         });
         setFloorPlanDevices(hydratedDevices);
-        setSelectedFloor(data.selectedFloor || initialMockFloors[0]);
         
-        // Ensure selectedFloor is in availableFloors
-        if (data.selectedFloor && !availableFloors.includes(data.selectedFloor)) {
+        const loadedSelectedFloor = data.selectedFloor || initialMockFloors[0];
+        setSelectedFloor(loadedSelectedFloor);
+        
+        if (loadedSelectedFloor && !availableFloors.includes(loadedSelectedFloor)) {
           setAvailableFloors(prev => {
-            if (!prev.includes(data.selectedFloor)) return [...prev, data.selectedFloor];
+            if (!prev.includes(loadedSelectedFloor)) return [...prev, loadedSelectedFloor];
             return prev;
           });
         }
-        toast({ title: "Floor plan loaded", description: "Retrieved existing floor plan."});
+        toast({ title: "Floor plan loaded", description: `Successfully loaded plan for ${loadedSelectedFloor}.`});
       } catch (error) {
-        console.error("Error loading floor plan:", error);
-        toast({ title: "Error Loading Plan", description: (error as Error).message, variant: "destructive" });
+        const errorMessage = (error as Error).message || "Failed to load floor plan.";
+        setPlanError(errorMessage);
+        toast({ title: "Error Loading Plan", description: errorMessage, variant: "destructive" });
         // Initialize with default if loading fails
         setFloorPlanRooms([
           { id: "fp-lr-default", name: "Living Room (Default)", x: 10, y: 10, width: 35, height: 30, devices: ["light001"]},
@@ -150,25 +157,18 @@ export default function SimulationPage() {
         setIsLoadingPlan(false);
       }
     };
-    loadPlan();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Removed selectedFloor from dependency array to avoid re-fetching on floor change, handle floor change separately
 
   const handleFloorChange = (newFloor: string) => {
+    // Comment: Future ML Integration - Log floor changes to understand user navigation patterns within simulation.
     setSelectedFloor(newFloor);
-    // TODO: Here you would typically fetch the floor plan data for the newFloor
-    // For this demo, since we save all floors in one object per user (hypothetically),
-    // or only have one floor's data active at a time, we might clear or reset.
-    // For simplicity, if the backend stores one plan per user, this loadPlan() would just re-fetch.
-    // Or, if backend manages floors within the single user plan object, it would return the specific floor's data.
-    // The current loadPlan fetches the plan for MOCK_USER_ID, which includes the selectedFloor string.
-    // If data for multiple floors is stored under the same user, we'd need to adjust what `loadPlan` does,
-    // or how the backend serves data for a specific floor.
-    // For now, let's assume changing floor clears the current view and would rely on a re-fetch or more complex state management.
+    // In a multi-floor backend, this would trigger a fetch for the specific floor's data.
+    // For the current single-plan-per-user backend, we might just reload or have the backend filter.
+    // For simplicity now, we assume the user might want to clear and start fresh or that `loadPlan` handles it.
+    // loadPlan(); // Or loadPlanForFloor(newFloor) if backend supports it.
+    // For demo, just clearing and showing a toast.
     setFloorPlanRooms([]); 
     setFloorPlanDevices([]);
-    // Potentially call a modified loadPlanForFloor(newFloor)
-    toast({title: `Switched to ${newFloor}`, description: "Load or create content for this floor."});
+    toast({title: `Switched to ${newFloor}`, description: "Load existing content or add new rooms/devices for this floor."});
   };
 
 
@@ -176,11 +176,11 @@ export default function SimulationPage() {
     if (newFloorNameInput.trim() && !availableFloors.includes(newFloorNameInput.trim())) {
       const newFloor = newFloorNameInput.trim();
       setAvailableFloors(prev => [...prev, newFloor]);
-      setSelectedFloor(newFloor); // Switch to the new floor
-      setFloorPlanRooms([]); // Clear rooms for new floor
-      setFloorPlanDevices([]); // Clear devices for new floor
+      setSelectedFloor(newFloor); 
+      setFloorPlanRooms([]); 
+      setFloorPlanDevices([]); 
       setNewFloorNameInput("");
-      toast({ title: "Floor Added (Client-side)", description: `${newFloor} added. Save plan to persist.` });
+      toast({ title: "Floor Added (Client-side)", description: `${newFloor} added. Remember to save your plan.` });
     } else if (availableFloors.includes(newFloorNameInput.trim())) {
       toast({ title: "Floor Exists", description: "This floor name already exists.", variant: "default" });
     } else {
@@ -190,6 +190,7 @@ export default function SimulationPage() {
 
 
   const handleSavePlan = async () => {
+    // Comment: Future ML Integration - Floor plan data (room sizes, device placements) can be a feature set for understanding home layouts.
     setIsSavingPlan(true);
     try {
       const apiPlacedDevicesToSave: APIPlacedDevice[] = floorPlanDevices.map(fpd => ({
@@ -200,7 +201,7 @@ export default function SimulationPage() {
         height: fpd.height,
       }));
 
-      const dataToSave: Omit<FloorPlanDataFromAPI, 'userId'> = { // Backend service adds userId
+      const dataToSave: Omit<FloorPlanDataFromAPI, 'userId'> = { 
         rooms: floorPlanRooms,
         placedDevices: apiPlacedDevicesToSave,
         selectedFloor: selectedFloor,
@@ -211,10 +212,11 @@ export default function SimulationPage() {
         body: JSON.stringify(dataToSave),
       });
 
-      toast({ title: "Floor Plan Saved", description: "Your changes have been saved successfully." });
+      toast({ title: "Floor Plan Saved", description: "Your changes have been saved successfully to the backend." });
     } catch (error) {
+      const errorMessage = (error as Error).message || "Failed to save floor plan.";
       console.error("Error saving floor plan:", error);
-      toast({ title: "Error Saving Plan", description: (error as Error).message, variant: "destructive" });
+      toast({ title: "Error Saving Plan", description: errorMessage, variant: "destructive" });
     } finally {
       setIsSavingPlan(false);
     }
@@ -274,28 +276,33 @@ export default function SimulationPage() {
     setDeviceToAddToPlan(undefined);
   };
 
-  const handleDeviceControlChange = (deviceId: string, controlType: "brightness" | "volume" | "status", value: any) => {
-    // This function is for the device list *below* the simulation canvas.
-    // It should ideally call a backend endpoint to control the actual device.
-    // For this demo, we'll just toast.
+  const handleDeviceControlChange = async (deviceId: string, controlType: "brightness" | "volume" | "status", value: any) => {
+    // This would ideally call the backend to update the actual device state
+    // For now, it's a simulated control
     const device = mockSimDevices.find(d => d.id === deviceId);
-    toast({ title: "Device Control (List Demo)", description: `Control ${device?.name} ${controlType} to ${value}`});
-
-    // If you want this to also reflect in the `mockSimDevices` array for UI updates in the list:
-    // setMockSimDevices(prev => prev.map(d => {
-    //   if (d.id === deviceId) {
-    //     const updatedDevice = {...d};
-    //     if (controlType === "status") updatedDevice.status = value ? "On" : "Off"; // Example
-    //     // Add more logic for brightness/volume if needed
-    //     return updatedDevice;
-    //   }
-    //   return d;
-    // }));
+    try {
+      // Simulate API call
+      // await apiClient(`/devices/${deviceId}/control`, { method: 'POST', body: JSON.stringify({ [controlType]: value }) });
+      toast({ title: "Device Control (Sim Demo)", description: `Control ${device?.name} ${controlType} to ${value}`});
+      // Update local mock state if necessary for immediate visual feedback in the list
+      const updatedSimDevices = mockSimDevices.map(d => {
+        if (d.id === deviceId) {
+          const newStatus = controlType === 'status' ? (value ? 'on' : 'off') : d.status;
+          const newSettings = { ...d.settings };
+          if (controlType === 'brightness') newSettings.brightness = value;
+          if (controlType === 'volume') newSettings.volume = value;
+          return { ...d, status: newStatus, settings: newSettings, brightness: newSettings.brightness, volume: newSettings.volume };
+        }
+        return d;
+      });
+      // If mockSimDevices was a state: setMockSimDevices(updatedSimDevices); 
+      // For now, this won't persist change in the list below, only toast.
+    } catch (err) {
+        toast({ title: "Control Error", description: (err as Error).message, variant: "destructive"});
+    }
   };
 
    const handleDeviceSimulationControl = (deviceId: string, controlType: "brightness" | "volume" | "status", value: any) => {
-    // This function is intended for controls *within* the simulation if they were added directly on device icons.
-    // Since DeviceCard is used below, it handles its own state for sim changes.
     const device = mockSimDevices.find(d => d.id === deviceId);
     if (device) {
       console.log(`Sim: ${device.name} ${controlType} changed to ${value}. (Visual effect only)`);
@@ -342,7 +349,7 @@ export default function SimulationPage() {
   const handleResizeMouseDown = (e: React.MouseEvent, roomId: string, handle: ResizeHandleType) => {
     if (!editMode || !floorPlanRef.current) return;
     e.preventDefault();
-    e.stopPropagation(); // Prevent triggering room drag
+    e.stopPropagation(); 
     const room = floorPlanRooms.find(r => r.id === roomId);
     if (!room) return;
 
@@ -443,10 +450,8 @@ export default function SimulationPage() {
             newHeight = MIN_ROOM_SIZE_PERCENT;
         }
 
-        newX = Math.max(0, newX);
-        newY = Math.max(0, newY);
-        if (newX + newWidth > 100) newWidth = 100 - newX;
-        if (newY + newHeight > 100) newHeight = 100 - newY;
+        newX = Math.max(0, Math.min(newX, 100 - newWidth));
+        newY = Math.max(0, Math.min(newY, 100 - newHeight));
         
         const updatedRoom: FloorPlanRoomFE = { ...room, x: newX, y: newY, width: newWidth, height: newHeight };
 
@@ -496,10 +501,20 @@ export default function SimulationPage() {
       </div>
     );
   }
+  if (planError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-destructive p-4">
+        <AlertTriangle className="h-12 w-12 mb-4" />
+        <h2 className="text-xl font-semibold mb-2">Error Loading Floor Plan</h2>
+        <p className="text-center mb-4">{planError}</p>
+        <Button onClick={loadPlan}><PlusCircle className="mr-2 h-4 w-4"/>Retry Load</Button>
+      </div>
+    );
+  }
 
   return (
     <TooltipProvider>
-    <div className="space-y-8">
+    <div className="space-y-8 p-4 md:p-6 lg:p-8">
       <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold">House &amp; Wake-Up Simulation</h1>
@@ -702,9 +717,9 @@ export default function SimulationPage() {
         </CardHeader>
         <CardContent>
             <Tabs value={selectedRoomTab} onValueChange={setSelectedRoomTab} className="w-full">
-                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-6 mb-4">
+                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-6 mb-4 overflow-x-auto no-scrollbar">
                     <TabsTrigger value="All">All</TabsTrigger>
-                    {initialMockRooms.map(room => ( // Using initialMockRooms for tab consistency
+                    {initialMockRooms.map(room => ( 
                         <TabsTrigger key={room} value={room}>{room}</TabsTrigger>
                     ))}
                 </TabsList>
@@ -727,9 +742,10 @@ export default function SimulationPage() {
                                     onVolumeChange={(value) => handleDeviceControlChange(device.id, "volume", value)}
                                     onSimulationBrightnessChange={(value) => handleDeviceSimulationControl(device.id, "brightness", value)}
                                     onSimulationVolumeChange={(value) => handleDeviceSimulationControl(device.id, "volume", value)}
-                                    onToggle={(isOn) => handleDeviceControlChange(device.id, "status", isOn ? "on" : "off")}
+                                    onToggle={(isOn) => handleDeviceControlChange(device.id, "status", isOn)}
                                     onColorChange={() => toast({title:"Change Color (Sim Demo)"})}
                                     connectionDetails={device.connectionDetails}
+                                    settings={device.settings}
                                 />
                             ))}
                         </div>
@@ -760,3 +776,4 @@ export default function SimulationPage() {
     </TooltipProvider>
   );
 }
+

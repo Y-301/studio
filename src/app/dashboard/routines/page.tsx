@@ -4,12 +4,11 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, ListChecks, Sun, Moon, Zap, Clock, ZapOff, Edit3, Settings, AlertTriangle, Info, Loader2, Play } from "lucide-react";
+import { PlusCircle, ListChecks, Sun, Moon, Zap, Clock, ZapOff, Edit3, Settings, AlertTriangle, Info, Loader2, Play, Filter as FilterIcon } from "lucide-react";
 import { RoutineSuggestionClient } from "@/components/routines/RoutineSuggestionClient";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-// import { Textarea } from "@/components/ui/textarea"; // Not used in this version of form
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useForm, Controller, useFieldArray } from "react-hook-form";
@@ -19,9 +18,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDes
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { apiClient } from "@/lib/apiClient";
-import type { Device } from "@/components/devices/DeviceCard"; // Assuming Device type is exported here for mockDevices
+import type { Device } from "@/components/devices/DeviceCard"; 
 
-// Define Routine type matching backend model
 interface Routine {
   id: string;
   userId: string;
@@ -33,45 +31,48 @@ interface Routine {
   };
   actions: Array<{
     deviceId: string;
-    deviceName: string; // Added for display
-    deviceType: Device['type']; // Added for display & logic
-    actionType?: string; // e.g., 'turn_on', 'set_brightness' - might be complex
-    targetState: string; // Simplified for now: "on", "off", "22°C", "brightness:70"
+    deviceName: string; 
+    deviceType: Device['type']; 
+    actionType?: string; 
+    targetState: string; 
     actionData?: any;
   }>;
   isEnabled: boolean;
   createdAt?: string;
   updatedAt?: string;
   lastRun?: string;
-  icon?: React.ElementType; // For frontend
-  dataAiHint?: string; // For frontend
+  icon?: React.ElementType; 
+  dataAiHint?: string; 
 }
 
 
 const triggerTypes = ["time", "wristband_event", "manual", "device_state_change"] as const;
-// Assuming Device type includes 'type'
 const actionDeviceTypes = ["light", "thermostat", "speaker", "blinds", "fan", "switch", "tv", "other"] as const;
 
 
 const actionSchema = z.object({
     deviceId: z.string().min(1, "Device selection is required."),
-    deviceName: z.string().min(1, "Device name is required."), // Keep for form state
-    deviceType: z.enum(actionDeviceTypes, { errorMap: () => ({ message: "Device type is required."}) }), // Keep for form state
-    targetState: z.string().min(1, "Target state is required (e.g., on, 22°C, 50% volume)."),
+    deviceName: z.string().min(1, "Device name is required (auto-filled)."), 
+    deviceType: z.enum(actionDeviceTypes, { errorMap: () => ({ message: "Device type is required (auto-filled)."}) }), 
+    targetState: z.string().min(1, "Target state is required (e.g., on, off, 22°C, brightness:70, volume:50)."),
   });
 
 const routineFormSchema = z.object({
   id: z.string().optional(),
   name: z.string().min(3, "Routine name must be at least 3 characters."),
+  description: z.string().optional(),
   triggerType: z.enum(triggerTypes, { required_error: "Trigger type is required." }),
-  triggerDetails: z.string().optional(),
+  triggerDetails: z.string().optional().refine(val => val !== undefined && val.trim() !== "", {
+    message: "Trigger details are required for some trigger types (e.g., time).",
+    // This path makes the error appear under triggerDetails field.
+    // We'll add a check in onSubmit to make it conditional based on triggerType.
+  }),
   actions: z.array(actionSchema).min(1, "At least one action is required."),
   isEnabled: z.boolean().default(true),
 });
 
 type RoutineFormData = z.infer<typeof routineFormSchema>;
 
-// Mock devices for action selection in modal
 const mockDevicesForActions: Array<Pick<Device, 'id' | 'name' | 'type'>> = [
   { id: "light001", name: "Living Room Lamp", type: "light" },
   { id: "thermostat001", name: "Main Thermostat", type: "thermostat" },
@@ -102,7 +103,7 @@ export default function RoutinesPage() {
 
   const form = useForm<RoutineFormData>({
     resolver: zodResolver(routineFormSchema),
-    defaultValues: { name: "", actions: [], isEnabled: true, triggerDetails: "" },
+    defaultValues: { name: "", description: "", actions: [], isEnabled: true, triggerDetails: "" },
   });
 
   const { fields: actionsFields, append: appendAction, remove: removeAction } = useFieldArray({
@@ -120,8 +121,9 @@ export default function RoutinesPage() {
         icon: routineIconMap[r.name.toLowerCase().includes("morning") ? "sun" : r.name.toLowerCase().includes("evening") || r.name.toLowerCase().includes("night") ? "moon" : r.trigger.type === 'manual' ? "zap" : "default"] || ListChecks,
       })));
     } catch (err) {
-      setError((err as Error).message || "Failed to fetch routines.");
-      toast({ title: "Error", description: (err as Error).message || "Could not fetch routines.", variant: "destructive" });
+      const errorMessage = (err as Error).message || "Failed to fetch routines.";
+      setError(errorMessage);
+      toast({ title: "Error Fetching Routines", description: errorMessage, variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -135,12 +137,13 @@ export default function RoutinesPage() {
 
   const filteredRoutines = useMemo(() => {
     if (filter === "all") return routines;
-    return routines.filter(r => r.name.toLowerCase().includes(filter));
+    // A more robust filtering based on keywords rather than exact match might be better
+    return routines.filter(r => r.name.toLowerCase().includes(filter) || (filter === 'custom' && !r.name.toLowerCase().includes('morning') && !r.name.toLowerCase().includes('evening')));
   }, [routines, filter]);
 
   const handleAddRoutine = () => {
     setEditingRoutine(null);
-    form.reset({ name: "", triggerType: "time", triggerDetails: "", actions: [{deviceId: "", deviceName: "", deviceType: "light", targetState: ""}], isEnabled: true });
+    form.reset({ name: "", description: "", triggerType: "time", triggerDetails: "07:00 AM", actions: [{deviceId: "", deviceName: "", deviceType: "light", targetState: "on"}], isEnabled: true });
     setIsModalOpen(true);
   };
 
@@ -149,9 +152,10 @@ export default function RoutinesPage() {
     form.reset({
       id: routine.id,
       name: routine.name,
+      description: routine.description || "",
       triggerType: routine.trigger.type,
       triggerDetails: routine.trigger.details || "",
-      actions: routine.actions.map(a => ({ // Ensure actions are mapped correctly
+      actions: routine.actions.map(a => ({ 
           deviceId: a.deviceId,
           deviceName: a.deviceName || mockDevicesForActions.find(d => d.id === a.deviceId)?.name || 'Unknown Device',
           deviceType: a.deviceType || mockDevicesForActions.find(d => d.id === a.deviceId)?.type || 'other',
@@ -162,36 +166,44 @@ export default function RoutinesPage() {
     setIsModalOpen(true);
   };
 
-  const onSubmit = async (data: RoutineFormData) => {
+  const onSubmitForm = async (data: RoutineFormData) => {
+    // Conditional validation for triggerDetails
+    if ((data.triggerType === 'time' || data.triggerType === 'device_state_change' || data.triggerType === 'wristband_event') && (!data.triggerDetails || data.triggerDetails.trim() === '')) {
+        form.setError("triggerDetails", { type: "manual", message: "Trigger details are required for this trigger type."});
+        return;
+    }
+
     const payload = {
         name: data.name,
+        description: data.description,
         trigger: {
             type: data.triggerType,
             details: data.triggerDetails,
         },
-        actions: data.actions.map(a => ({ // Ensure backend format
+        actions: data.actions.map(a => ({ 
             deviceId: a.deviceId,
-            // actionType: could be derived or fixed for now
-            targetState: a.targetState, // Send simplified targetState
-            // actionData: might need complex parsing from targetState
+            targetState: a.targetState, 
+            // Backend might infer deviceName & deviceType from deviceId, or they can be sent if model includes them
+            deviceName: a.deviceName,
+            deviceType: a.deviceType,
         })),
         isEnabled: data.isEnabled,
-        description: data.actions.map(a => `${mockDevicesForActions.find(d => d.id === a.deviceId)?.name || a.deviceId} to ${a.targetState}`).join(', '), // For backend model
     };
 
     try {
+      let responseRoutine: Routine;
       if (editingRoutine && editingRoutine.id) {
-        await apiClient<Routine>(`/routines/${editingRoutine.id}`, {
+        responseRoutine = await apiClient<Routine>(`/routines/${editingRoutine.id}`, {
           method: 'PUT',
           body: JSON.stringify(payload),
         });
-        toast({ title: "Routine Updated", description: `${data.name} has been updated successfully.`});
+        toast({ title: "Routine Updated", description: `${responseRoutine.name} has been updated successfully.`});
       } else {
-        await apiClient<Routine>('/routines', {
+        responseRoutine = await apiClient<Routine>('/routines', {
           method: 'POST',
           body: JSON.stringify(payload),
         });
-        toast({ title: "Routine Created", description: `${data.name} has been created.`});
+        toast({ title: "Routine Created", description: `${responseRoutine.name} has been created.`});
       }
       fetchRoutines();
       setIsModalOpen(false);
@@ -206,13 +218,14 @@ export default function RoutinesPage() {
     try {
         await apiClient<Routine>(`/routines/${routine.id}`, {
             method: 'PUT',
-            body: JSON.stringify({ isEnabled: newIsEnabled }),
+            // Backend only needs the field that changed for partial update
+            body: JSON.stringify({ isEnabled: newIsEnabled }), 
         });
         toast({
             title: `Routine ${newIsEnabled ? 'Activated' : 'Deactivated'}`,
             description: `${routine.name} is now ${newIsEnabled ? 'active' : 'inactive'}.`
         });
-        fetchRoutines(); // Refresh list
+        fetchRoutines(); 
     } catch (err) {
         toast({ title: "Toggle Failed", description: (err as Error).message, variant: "destructive" });
     }
@@ -222,7 +235,7 @@ export default function RoutinesPage() {
     try {
         await apiClient(`/routines/${routineId}/trigger`, { method: 'POST' });
         toast({ title: "Routine Triggered", description: `${routineName} has been triggered successfully.` });
-        fetchRoutines(); // Refresh to update lastRun or other status
+        fetchRoutines(); 
     } catch (err) {
         toast({ title: "Trigger Failed", description: (err as Error).message, variant: "destructive" });
     }
@@ -240,7 +253,7 @@ export default function RoutinesPage() {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-destructive">
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-destructive p-4">
         <AlertTriangle className="h-12 w-12 mb-4" />
         <h2 className="text-xl font-semibold mb-2">Error Fetching Routines</h2>
         <p className="text-center mb-4">{error}</p>
@@ -250,15 +263,15 @@ export default function RoutinesPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center">
+    <div className="space-y-8 p-4 md:p-6 lg:p-8">
+      <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold">Your Routines</h1>
           <p className="text-muted-foreground">
             Automate your day with personalized routines.
           </p>
         </div>
-        <Button onClick={handleAddRoutine}>
+        <Button onClick={handleAddRoutine} className="w-full md:w-auto">
           <PlusCircle className="mr-2 h-4 w-4" /> Create New Routine
         </Button>
       </div>
@@ -275,12 +288,12 @@ export default function RoutinesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Saved Routines</CardTitle>
+          <CardTitle>Saved Routines ({filteredRoutines.length})</CardTitle>
           <CardDescription>Manage your existing routines or create new ones.</CardDescription>
-           <div className="flex space-x-2 pt-2">
+           <div className="flex flex-wrap space-x-2 pt-2">
             {(["all", "morning", "evening", "custom"] as const).map(f => (
-              <Button key={f} variant={filter === f ? "default" : "outline"} size="sm" onClick={() => setFilter(f)}>
-                {f.charAt(0).toUpperCase() + f.slice(1)}
+              <Button key={f} variant={filter === f ? "default" : "outline"} size="sm" onClick={() => setFilter(f)} className="mb-2">
+                <FilterIcon className="mr-2 h-3 w-3 opacity-70"/>{f.charAt(0).toUpperCase() + f.slice(1)}
               </Button>
             ))}
           </div>
@@ -296,17 +309,17 @@ export default function RoutinesPage() {
                     <div className="flex items-start sm:items-center justify-between flex-col sm:flex-row gap-4">
                         <div className="flex items-center gap-4 flex-1">
                         <RoutineIcon className={`h-8 w-8 ${routine.isEnabled ? 'text-primary' : 'text-muted-foreground'} group-hover:scale-110 transition-transform shrink-0`} />
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0"> {/* Added min-w-0 for better truncation */}
                             <h3 className="font-semibold">{routine.name}</h3>
-                            <p className="text-sm text-muted-foreground truncate max-w-xs sm:max-w-md md:max-w-lg" title={routine.description}>{routine.description || "No description."}</p>
+                            <p className="text-sm text-muted-foreground truncate" title={routine.description}>{routine.description || "No description."}</p>
                             <div className="text-xs text-muted-foreground mt-1 space-x-2 flex flex-wrap">
-                                <span>Trigger: {routine.trigger.type} - {routine.trigger.details || 'N/A'}</span>
-                                <span className="truncate" title={actionsSummary}>Actions: {actionsSummary || "No actions defined"}</span>
-                                <span>Last Run: {routine.lastRun || "Never"}</span>
+                                <span className="truncate">Trigger: {routine.trigger.type} ({routine.trigger.details || 'N/A'})</span>
+                                <span className="truncate hidden sm:inline" title={actionsSummary}>Actions: {actionsSummary || "No actions"}</span>
+                                <span className="truncate">Last Run: {routine.lastRun ? new Date(routine.lastRun).toLocaleString() : "Never"}</span>
                             </div>
                         </div>
                         </div>
-                        <div className="flex items-center gap-2 self-end sm:self-center">
+                        <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
                         <Button variant="outline" size="sm" onClick={() => handleTriggerRoutine(routine.id, routine.name)} disabled={!routine.isEnabled}>
                             <Play className="mr-1 h-4 w-4"/> Run
                         </Button>
@@ -316,7 +329,7 @@ export default function RoutinesPage() {
                             aria-label={`Toggle ${routine.name}`}
                             id={`routine-toggle-${routine.id}`}
                         />
-                        <Label htmlFor={`routine-toggle-${routine.id}`} className="text-sm cursor-pointer">
+                        <Label htmlFor={`routine-toggle-${routine.id}`} className="text-sm cursor-pointer hidden sm:block">
                             {routine.isEnabled ? "Active" : "Inactive"}
                         </Label>
                         <Button variant="ghost" size="icon" onClick={() => handleEditRoutine(routine)}>
@@ -352,14 +365,25 @@ export default function RoutinesPage() {
             </DialogDescription>
           </DialogHeader>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 py-4 max-h-[70vh] overflow-y-auto pr-2">
+            <form onSubmit={form.handleSubmit(onSubmitForm)} className="space-y-6 py-4 max-h-[70vh] overflow-y-auto pr-2">
               <FormField
                 control={form.control}
                 name="name"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Routine Name</FormLabel>
-                    <FormControl><Input placeholder="e.g., Morning Wake Up" {...field} /></FormControl>
+                    <FormControl><Input placeholder="e.g., Morning Wake Up, Movie Night" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+               <FormField
+                control={form.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Description (Optional)</FormLabel>
+                    <FormControl><Input placeholder="Briefly describe what this routine does" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -377,7 +401,7 @@ export default function RoutinesPage() {
                         render={({ field }) => (
                         <FormItem>
                             <FormLabel>Trigger Type</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl><SelectTrigger><SelectValue placeholder="Select trigger" /></SelectTrigger></FormControl>
                             <SelectContent>
                                 {triggerTypes.map(type => <SelectItem key={type} value={type} className="capitalize">{type.replace(/_/g, " ")}</SelectItem>)}
@@ -393,9 +417,9 @@ export default function RoutinesPage() {
                         render={({ field }) => (
                         <FormItem>
                             <FormLabel>Trigger Details</FormLabel>
-                            <FormControl><Input placeholder="e.g., 07:00 AM or sleep_detected" {...field} /></FormControl>
+                            <FormControl><Input placeholder="e.g., 07:00 AM, sleep_detected, living_room_light:on" {...field} /></FormControl>
                             <ShadcnFormDescription className="text-xs">
-                                For 'Time', use HH:MM AM/PM. For 'Wristband Event', use events like 'sleep_detected', 'awake'.
+                                Time: "HH:MM AM/PM". Event: "event_name". Device State: "device_id:state".
                             </ShadcnFormDescription>
                             <FormMessage />
                         </FormItem>
@@ -408,7 +432,7 @@ export default function RoutinesPage() {
 
               <Card className="p-4 bg-secondary/30">
                 <CardHeader className="p-0 pb-3">
-                     <CardTitle className="text-lg">Actions</CardTitle>
+                     <CardTitle className="text-lg">Actions ({actionsFields.length})</CardTitle>
                     <ShadcnFormDescription className="text-xs">What happens when the routine runs.</ShadcnFormDescription>
                 </CardHeader>
                 <CardContent className="p-0 space-y-3">
@@ -417,7 +441,7 @@ export default function RoutinesPage() {
                         <div className="flex justify-between items-center">
                             <p className="text-sm font-medium">Action {index + 1}</p>
                             {actionsFields.length > 1 && (
-                                <Button type="button" variant="ghost" size="sm" onClick={() => removeAction(index)} className="text-destructive hover:text-destructive/80">Remove</Button>
+                                <Button type="button" variant="ghost" size="sm" onClick={() => removeAction(index)} className="text-destructive hover:text-destructive/80 h-7 px-2">Remove</Button>
                             )}
                         </div>
                         <FormField
@@ -433,7 +457,7 @@ export default function RoutinesPage() {
                                         form.setValue(`actions.${index}.deviceType`, selectedDevice?.type as any);
                                         controllerField.onChange(value);
                                     }}
-                                    defaultValue={controllerField.value}
+                                    value={controllerField.value}
                                 >
                                 <FormControl><SelectTrigger><SelectValue placeholder="Select Device" /></SelectTrigger></FormControl>
                                 <SelectContent>
@@ -449,9 +473,9 @@ export default function RoutinesPage() {
                             name={`actions.${index}.targetState`}
                             render={({ field }) => (
                                 <FormItem>
-                                <FormLabel>Target State</FormLabel>
-                                <FormControl><Input {...field} placeholder="e.g. on, 22°C, brightness:70"/></FormControl>
-                                <ShadcnFormDescription className="text-xs">Define the desired state or command for the device.</ShadcnFormDescription>
+                                <FormLabel>Target State / Command</FormLabel>
+                                <FormControl><Input {...field} placeholder="e.g. on, off, 22°C, brightness:70, volume:50"/></FormControl>
+                                <ShadcnFormDescription className="text-xs">Define the desired state for the device.</ShadcnFormDescription>
                                 <FormMessage />
                                 </FormItem>
                             )}
@@ -461,8 +485,8 @@ export default function RoutinesPage() {
                     <Button type="button" variant="outline" size="sm" onClick={() => appendAction({ deviceId: "", deviceName: "", deviceType: "light", targetState: "" })} className="mt-2 w-full">
                         <PlusCircle className="mr-2 h-4 w-4" /> Add Action
                     </Button>
-                    {form.formState.errors.actions && typeof form.formState.errors.actions === 'object' && 'message' in form.formState.errors.actions && (
-                        <p className="text-destructive text-xs mt-1">{String(form.formState.errors.actions.message)}</p>
+                    {form.formState.errors.actions && typeof form.formState.errors.actions !== 'string' && form.formState.errors.actions.message && (
+                        <p className="text-destructive text-xs mt-1 flex items-center gap-1"><AlertTriangle className="h-3 w-3"/>{form.formState.errors.actions.message}</p>
                     )}
                      {form.formState.errors.actions?.root && (
                         <p className="text-destructive text-xs mt-1 flex items-center gap-1"><AlertTriangle className="h-3 w-3"/>{form.formState.errors.actions.root.message}</p>
@@ -508,3 +532,4 @@ export default function RoutinesPage() {
     </div>
   );
 }
+

@@ -2,8 +2,8 @@
 "use client"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { BarChart3, TrendingUp, BedDouble, Coffee, Zap, ListChecks, MessageCircle, Lightbulb, Bell } from "lucide-react"; // Added Bell
-import { Bar, BarChart, Pie, PieChart, Cell, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from 'recharts';
+import { BarChart3, TrendingUp, BedDouble, Coffee, Zap, ListChecks, MessageCircle, Lightbulb, Bell, ClockIcon } from "lucide-react"; 
+import { Bar, BarChart, Pie, PieChart, Cell, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, CartesianGrid, Line, LineChart } from 'recharts';
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import React from "react";
 
@@ -23,72 +23,77 @@ const energyData = [
 ];
 
 const deviceUsageData = [
-    { name: 'Lights', hours: 120, fill: "var(--color-lights)" },
-    { name: 'Thermostat', hours: 150, fill: "var(--color-thermostat)" },
-    { name: 'Speaker', hours: 80, fill: "var(--color-speaker)" },
-    { name: 'TV', hours: 95, fill: "var(--color-tv)" },
-    { name: 'Blinds', hours: 30, fill: "var(--color-blinds)" },
+    { name: 'Lights', hours: 120, color: "hsl(var(--chart-1))" }, // Use HSL from theme
+    { name: 'Thermostat', hours: 150, color: "hsl(var(--chart-2))" },
+    { name: 'Speaker', hours: 80, color: "hsl(var(--chart-3))" },
+    { name: 'TV', hours: 95, color: "hsl(var(--chart-4))" },
+    { name: 'Blinds', hours: 30, color: "hsl(var(--chart-5))" },
 ];
 const routineFrequencyData = [
-    { name: 'Morning', executions: 30, fill: "var(--color-morning)"},
-    { name: 'Evening', executions: 28, fill: "var(--color-evening)"},
-    { name: 'Movie', executions: 12, fill: "var(--color-movie)"},
-    { name: 'Workout', executions: 8, fill: "var(--color-workout)"},
+    { name: 'Morning', executions: 30, color: "hsl(var(--chart-1))"},
+    { name: 'Evening', executions: 28, color: "hsl(var(--chart-2))"},
+    { name: 'Movie', executions: 12, color: "hsl(var(--chart-3))"},
+    { name: 'Workout', executions: 8, color: "hsl(var(--chart-4))"},
 ];
 
 const energyConsumptionData = [
-    { category: 'Lighting', kwh: 25, fill: "var(--color-lights)" },
-    { category: 'HVAC', kwh: 60, fill: "var(--color-thermostat)" },
-    { category: 'Entertainment', kwh: 35, fill: "var(--color-tv)" },
-    { category: 'Appliances', kwh: 40, fill: "var(--color-speaker)" }, // Re-using speaker color for demo
+    { category: 'Lighting', kwh: 25, color: "hsl(var(--chart-1))" },
+    { category: 'HVAC', kwh: 60, color: "hsl(var(--chart-2))" },
+    { category: 'Entertainment', kwh: 35, color: "hsl(var(--chart-4))" },
+    { category: 'Appliances', kwh: 40, color: "hsl(var(--chart-3))" }, 
 ];
 
 const notificationSummaryData = [
-    { type: 'Routine Start', count: 45, fill: "var(--color-morning)" },
-    { type: 'Device Alert', count: 12, fill: "var(--color-evening)" },
-    { type: 'System Update', count: 5, fill: "var(--color-movie)" },
-    { type: 'Low Battery', count: 8, fill: "var(--color-workout)" },
+    { type: 'Routine Start', count: 45, color: "hsl(var(--chart-1))" },
+    { type: 'Device Alert', count: 12, color: "hsl(var(--chart-2))" },
+    { type: 'System Update', count: 5, color: "hsl(var(--chart-3))" },
+    { type: 'Low Battery', count: 8, color: "hsl(var(--chart-4))" },
 ];
 
 
 const chartConfigSleep = { 
     hours: { label: "Total Sleep", color: "hsl(var(--chart-1))" },
-    quality: { label: "Quality" },
+    quality: { label: "Quality" }, // No color needed if not plotted as a series
     deepSleep: { label: "Deep Sleep", color: "hsl(var(--chart-2))" },
     lightSleep: { label: "Light Sleep", color: "hsl(var(--chart-3))" },
     remSleep: { label: "REM Sleep", color: "hsl(var(--chart-4))" },
 } satisfies ChartConfig;
-const chartConfigEnergy = { level: { label: "Energy Level", color: "hsl(var(--chart-2))" }} satisfies ChartConfig;
+
+const chartConfigEnergy = { 
+    level: { label: "Energy Level", color: "hsl(var(--chart-2))" }
+} satisfies ChartConfig;
+
 const chartConfigDeviceUsage = {
   hours: { label: "Usage (hours)" },
-  lights: { label: "Lights", color: "hsl(var(--chart-1))" },
-  thermostat: { label: "Thermostat", color: "hsl(var(--chart-2))" },
-  speaker: { label: "Speaker", color: "hsl(var(--chart-3))" },
-  tv: { label: "TV", color: "hsl(var(--chart-4))" },
-  blinds: { label: "Blinds", color: "hsl(var(--chart-5))" },
+  Lights: { label: "Lights", color: deviceUsageData.find(d=>d.name==='Lights')?.color },
+  Thermostat: { label: "Thermostat", color: deviceUsageData.find(d=>d.name==='Thermostat')?.color },
+  Speaker: { label: "Speaker", color: deviceUsageData.find(d=>d.name==='Speaker')?.color },
+  TV: { label: "TV", color: deviceUsageData.find(d=>d.name==='TV')?.color },
+  Blinds: { label: "Blinds", color: deviceUsageData.find(d=>d.name==='Blinds')?.color },
 } satisfies ChartConfig;
+
 const chartConfigRoutineFreq = {
   executions: { label: "Executions" },
-  morning: {label: "Morning", color: "hsl(var(--chart-1))"},
-  evening: {label: "Evening", color: "hsl(var(--chart-2))"},
-  movie: {label: "Movie", color: "hsl(var(--chart-3))"},
-  workout: {label: "Workout", color: "hsl(var(--chart-4))"},
+  Morning: {label: "Morning", color: routineFrequencyData.find(d=>d.name==='Morning')?.color},
+  Evening: {label: "Evening", color: routineFrequencyData.find(d=>d.name==='Evening')?.color},
+  Movie: {label: "Movie", color: routineFrequencyData.find(d=>d.name==='Movie')?.color},
+  Workout: {label: "Workout", color: routineFrequencyData.find(d=>d.name==='Workout')?.color},
 } satisfies ChartConfig;
 
 const chartConfigEnergyConsumption = {
     kwh: { label: "kWh" },
-    lights: { label: "Lighting", color: "hsl(var(--chart-1))" },
-    thermostat: { label: "HVAC", color: "hsl(var(--chart-2))" },
-    tv: { label: "Entertainment", color: "hsl(var(--chart-4))" },
-    speaker: { label: "Appliances", color: "hsl(var(--chart-3))" },
+    Lighting: { label: "Lighting", color: energyConsumptionData.find(d=>d.category==='Lighting')?.color },
+    HVAC: { label: "HVAC", color: energyConsumptionData.find(d=>d.category==='HVAC')?.color },
+    Entertainment: { label: "Entertainment", color: energyConsumptionData.find(d=>d.category==='Entertainment')?.color },
+    Appliances: { label: "Appliances", color: energyConsumptionData.find(d=>d.category==='Appliances')?.color },
 } satisfies ChartConfig;
 
 const chartConfigNotificationSummary = {
     count: { label: "Count" },
-    morning: { label: "Routine Start", color: "hsl(var(--chart-1))" },
-    evening: { label: "Device Alert", color: "hsl(var(--chart-2))" },
-    movie: { label: "System Update", color: "hsl(var(--chart-3))" },
-    workout: { label: "Low Battery", color: "hsl(var(--chart-4))" },
+    "Routine Start": { label: "Routine Start", color: notificationSummaryData.find(d=>d.type==='Routine Start')?.color },
+    "Device Alert": { label: "Device Alert", color: notificationSummaryData.find(d=>d.type==='Device Alert')?.color },
+    "System Update": { label: "System Update", color: notificationSummaryData.find(d=>d.type==='System Update')?.color },
+    "Low Battery": { label: "Low Battery", color: notificationSummaryData.find(d=>d.type==='Low Battery')?.color },
 } satisfies ChartConfig;
 
 const CustomSleepTooltip = ({ active, payload, label }: any) => {
@@ -127,12 +132,15 @@ const CustomSleepTooltip = ({ active, payload, label }: any) => {
 
 export default function AnalyticsPage() {
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold">Analytics Dashboard</h1>
-        <p className="text-muted-foreground">
-          Track your sleep patterns, energy levels, and smart home usage.
-        </p>
+    <div className="space-y-8 p-4 md:p-6 lg:p-8">
+      <div className="flex items-center gap-3">
+        <BarChart3 className="h-8 w-8 text-primary"/>
+        <div>
+            <h1 className="text-3xl font-bold">Analytics Dashboard</h1>
+            <p className="text-muted-foreground">
+            Track your sleep patterns, energy levels, and smart home usage.
+            </p>
+        </div>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
@@ -153,7 +161,7 @@ export default function AnalyticsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">85%</div>
-            <p className="text-xs text-muted-foreground">Target: 90%</p>
+            <p className="text-xs text-muted-foreground">Target: 90% (On-time wake-ups)</p>
           </CardContent>
         </Card>
         <Card className="hover:shadow-md transition-shadow">
@@ -163,7 +171,7 @@ export default function AnalyticsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">7/10</div>
-            <p className="text-xs text-muted-foreground">-0.5 from last week</p>
+            <p className="text-xs text-muted-foreground">-0.5 from last week (Self-reported)</p>
           </CardContent>
         </Card>
          <Card className="hover:shadow-md transition-shadow">
@@ -173,7 +181,7 @@ export default function AnalyticsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">92%</div>
-            <p className="text-xs text-muted-foreground">"Morning Energizer"</p>
+            <p className="text-xs text-muted-foreground">"Morning Energizer" completed</p>
           </CardContent>
         </Card>
       </div>
@@ -181,7 +189,7 @@ export default function AnalyticsPage() {
       <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
         <Card className="shadow-lg">
           <CardHeader>
-            <CardTitle>Weekly Sleep Duration</CardTitle>
+            <CardTitle className="flex items-center gap-2"><BedDouble className="h-5 w-5 text-primary"/>Weekly Sleep Duration</CardTitle>
             <CardDescription>Hours of sleep recorded per day over the last week. Includes quality and sleep stage breakdown in tooltip.</CardDescription>
           </CardHeader>
           <CardContent>
@@ -196,6 +204,7 @@ export default function AnalyticsPage() {
                 />
                 <Legend />
                 <Bar dataKey="hours" fill="var(--color-hours)" radius={4} name="Total Sleep" />
+                {/* Individual sleep stages can be added as stacked bars or separate bars if desired */}
               </BarChart>
             </ChartContainer>
           </CardContent>
@@ -203,22 +212,22 @@ export default function AnalyticsPage() {
 
         <Card className="shadow-lg">
           <CardHeader>
-            <CardTitle>Daily Energy Levels</CardTitle>
-            <CardDescription>Self-reported energy levels throughout a typical day.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><Coffee className="h-5 w-5 text-primary"/>Daily Energy Levels</CardTitle>
+            <CardDescription>Self-reported energy levels throughout a typical day. (Scale: 0-100%)</CardDescription>
           </CardHeader>
           <CardContent>
              <ChartContainer config={chartConfigEnergy} className="h-[300px] w-full">
-                <BarChart data={energyData} margin={{ top: 5, right: 20, left: -20, bottom: 5 }}>
+                <LineChart data={energyData} margin={{ top: 5, right: 20, left: -20, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                     <XAxis dataKey="time" tickLine={false} axisLine={false}/>
                     <YAxis tickLine={false} axisLine={false} domain={[0, 100]} unit="%"/>
                     <Tooltip 
-                        cursor={{ fill: 'hsl(var(--muted))' }}
-                        content={<ChartTooltipContent />} 
+                        cursor={{ strokeDasharray: '3 3' }}
+                        content={<ChartTooltipContent indicator="line" />} 
                     />
                     <Legend />
-                    <Bar dataKey="level" fill="var(--color-level)" radius={4} name="Energy Level"/>
-                </BarChart>
+                    <Line type="monotone" dataKey="level" stroke="var(--color-level)" strokeWidth={2} dot={{r:4}} name="Energy Level"/>
+                </LineChart>
             </ChartContainer>
           </CardContent>
         </Card>
@@ -227,7 +236,7 @@ export default function AnalyticsPage() {
       <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
         <Card className="shadow-lg">
             <CardHeader>
-                <CardTitle>Device Usage Over Time (Monthly)</CardTitle>
+                <CardTitle className="flex items-center gap-2"><ClockIcon className="h-5 w-5 text-primary"/>Device Usage (Monthly)</CardTitle>
                 <CardDescription>Total hours of usage by device category this month.</CardDescription>
             </CardHeader>
             <CardContent>
@@ -240,7 +249,7 @@ export default function AnalyticsPage() {
                         <Legend />
                         <Bar dataKey="hours" radius={4}>
                             {deviceUsageData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={entry.fill} />
+                                <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
                         </Bar>
                     </BarChart>
@@ -249,7 +258,7 @@ export default function AnalyticsPage() {
         </Card>
          <Card className="shadow-lg">
             <CardHeader>
-                <CardTitle>Routine Execution Frequency</CardTitle>
+                <CardTitle className="flex items-center gap-2"><ListChecks className="h-5 w-5 text-primary"/>Routine Execution Frequency</CardTitle>
                 <CardDescription>How often your top routines have been executed this month.</CardDescription>
             </CardHeader>
             <CardContent className="flex justify-center">
@@ -258,7 +267,7 @@ export default function AnalyticsPage() {
                         <Tooltip content={<ChartTooltipContent hideLabel />} />
                         <Pie data={routineFrequencyData} dataKey="executions" nameKey="name" cx="50%" cy="50%" outerRadius={100} label>
                              {routineFrequencyData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={entry.fill} />
+                                <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
                         </Pie>
                         <Legend/>
@@ -287,11 +296,12 @@ export default function AnalyticsPage() {
                         <Legend />
                          <Bar dataKey="kwh" radius={4}>
                             {energyConsumptionData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={entry.fill} />
+                                <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
                         </Bar>
                     </BarChart>
                 </ChartContainer>
+                 {/* Comment: Future ML integration - Analyze energy consumption patterns to suggest energy-saving routines. */}
             </CardContent>
         </Card>
         <Card className="shadow-lg">
@@ -305,7 +315,7 @@ export default function AnalyticsPage() {
                         <Tooltip content={<ChartTooltipContent hideLabel />} />
                         <Pie data={notificationSummaryData} dataKey="count" nameKey="type" cx="50%" cy="50%" outerRadius={100} label>
                              {notificationSummaryData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={entry.fill} />
+                                <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
                         </Pie>
                         <Legend/>
@@ -317,3 +327,4 @@ export default function AnalyticsPage() {
     </div>
   );
 }
+

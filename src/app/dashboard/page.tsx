@@ -8,13 +8,15 @@ import React, { useEffect, useState } from "react";
 import { auth } from "@/lib/firebase";
 import type { User as FirebaseUser } from "firebase/auth"; // Renamed to avoid conflict
 import { apiClient } from "@/lib/apiClient";
+import { useToast } from "@/hooks/use-toast"; // Import useToast
 
 interface DashboardSummary {
   activeDevices: number;
+  totalDevices: number;
   activeRoutines: number;
+  totalRoutines: number;
   nextWakeUpTime?: string;
   lastRoutineRun?: string;
-  // Add other summary fields as needed
 }
 
 export default function DashboardPage() {
@@ -23,6 +25,7 @@ export default function DashboardPage() {
   const [summaryData, setSummaryData] = useState<DashboardSummary | null>(null);
   const [isLoadingSummary, setIsLoadingSummary] = useState(true);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const { toast } = useToast(); // Initialize toast
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
@@ -32,7 +35,7 @@ export default function DashboardPage() {
         fetchDashboardSummary(user.uid); // Pass user UID or a mock ID
       } else {
         setGreetingName("Guest");
-        setIsLoadingSummary(false); // No summary to load if guest
+        setIsLoadingSummary(false); 
         setSummaryData(null);
       }
     });
@@ -43,19 +46,26 @@ export default function DashboardPage() {
     setIsLoadingSummary(true);
     setSummaryError(null);
     try {
-      // TODO: Create this endpoint in the backend. For now, it will likely 404 or use mock.
-      // The backend controller should use a default userId like 'user1' if not properly authenticated.
-      const data = await apiClient<DashboardSummary>(`/dashboard/summary?userId=${userId}`); // Pass userId if backend supports it
+      // Backend controller uses a default userId 'user1' if not properly authenticated or if no userId query param is passed.
+      // For a real multi-user setup, ensure the backend uses authenticated user's ID.
+      const data = await apiClient<DashboardSummary>(`/dashboard/summary?userId=${userId}`); 
       setSummaryData(data);
     } catch (err) {
-      setSummaryError("Failed to load dashboard summary. Using placeholder data.");
-      console.error("Dashboard summary error:", err);
+      const errorMessage = (err as Error).message || "Failed to load dashboard summary.";
+      setSummaryError(errorMessage + " Using placeholder data.");
+      toast({ // Toast for error
+        title: "Summary Load Failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
       // Fallback to mock data for demo if API fails
       setSummaryData({
-        activeDevices: 5, // Default or mock value
-        activeRoutines: 2, // Default or mock value
-        nextWakeUpTime: "Tomorrow, 6:30 AM",
-        lastRoutineRun: "Morning Energizer, Today 07:00 AM",
+        activeDevices: 5, 
+        totalDevices: 7,
+        activeRoutines: 2, 
+        totalRoutines: 3,
+        nextWakeUpTime: "Tomorrow, 6:30 AM (Simulated)",
+        lastRoutineRun: "Morning Energizer, Today 07:00 AM (Simulated)",
       });
     } finally {
       setIsLoadingSummary(false);
@@ -71,7 +81,7 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 p-4 md:p-6 lg:p-8">
       <Card className="shadow-lg">
         <CardHeader>
           <div className="flex items-center gap-3 mb-2">
@@ -149,9 +159,9 @@ export default function DashboardPage() {
             {!isLoadingSummary && summaryData && (
               <>
                 <div className="flex justify-between items-center">
-                  <span>Morning Routine: 
-                    <span className="font-semibold text-primary">
-                      {summaryData.lastRoutineRun || "N/A"}
+                  <span>Active/Total Routines: 
+                    <span className="font-semibold text-primary ml-1">
+                      {summaryData.activeRoutines ?? "N/A"} / {summaryData.totalRoutines ?? "N/A"}
                     </span>
                   </span>
                   <Button variant="ghost" size="sm" asChild disabled={!currentUser}>
@@ -159,9 +169,9 @@ export default function DashboardPage() {
                   </Button>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span>Connected Devices: 
-                    <span className="font-semibold text-primary">
-                      {summaryData.activeDevices ?? "N/A"}
+                  <span>Active/Total Devices: 
+                    <span className="font-semibold text-primary ml-1">
+                      {summaryData.activeDevices ?? "N/A"} / {summaryData.totalDevices ?? "N/A"}
                     </span>
                   </span>
                   <Button variant="ghost" size="sm" asChild disabled={!currentUser}>
@@ -169,7 +179,10 @@ export default function DashboardPage() {
                   </Button>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span>Next Wake-up: <span className="font-semibold text-primary">{summaryData.nextWakeUpTime || "Not Set"}</span></span>
+                  <span>Last Routine Run: <span className="font-semibold text-primary ml-1">{summaryData.lastRoutineRun || "N/A"}</span></span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span>Next Wake-up: <span className="font-semibold text-primary ml-1">{summaryData.nextWakeUpTime || "Not Set"}</span></span>
                   <Button variant="ghost" size="sm" asChild>
                     <Link href="/dashboard/simulation">Adjust</Link>
                   </Button>
@@ -191,6 +204,8 @@ export default function DashboardPage() {
             <p className="text-sm">💡 Try linking your calendar for even smarter routine suggestions!</p>
             <p className="text-sm">☀️ Explore different light intensities in the Wake Up Simulation.</p>
             <p className="text-sm">📊 Check the Analytics page to understand your sleep patterns better.</p>
+            {/* Adding a placeholder for AI integration */}
+            <p className="text-sm text-primary">🚀 <span className="font-semibold">Coming Soon:</span> Predictive analytics for energy saving and routine optimization!</p>
             <Button variant="secondary" className="mt-4" asChild disabled={!currentUser}>
                 <Link href={currentUser ? "/dashboard/settings" : "#"}>
                     <Settings className="mr-2 h-4 w-4" />
@@ -203,3 +218,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+

@@ -31,9 +31,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Bell, LogOut, UserCircle, CreditCard, Settings, Link as LinkIcon, Loader2, LogIn } from 'lucide-react'; 
+import { Bell, LogOut, UserCircle, CreditCard, Settings, Link as LinkIconLucide, Loader2, LogIn } from 'lucide-react'; 
 import { Logo } from '@/components/shared/Logo';
-import { dashboardNavItems } from '@/config/dashboard-nav'; 
+import { dashboardNavItems, type NavItem } from '@/config/dashboard-nav'; 
 import { cn } from '@/lib/utils';
 import { Footer } from '@/components/layout/Footer';
 import { useToast } from '@/hooks/use-toast';
@@ -46,6 +46,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { toast } = useToast();
   const [currentUser, setCurrentUser] = React.useState<User | null>(null);
   const [loadingAuth, setLoadingAuth] = React.useState(true);
+  const [pageTitle, setPageTitle] = React.useState('Dashboard');
 
   React.useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -53,13 +54,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         setCurrentUser(user);
       } else {
         setCurrentUser(null);
-        // For demo purposes, allow access to /dashboard even if not logged in
-        // Other protected routes will still be handled by their `disabled` prop in nav
+        // Redirect to login if trying to access a protected route without being logged in.
+        // This can be more granular based on `item.disabled` in nav config.
+        const currentNavItem = dashboardNavItems.flatMap(group => group.items).find(item => pathname.startsWith(item.href));
+        if (currentNavItem?.disabled) { // 'disabled' here means requires auth
+            router.push('/auth/login');
+        }
       }
       setLoadingAuth(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [pathname, router]);
+
+  React.useEffect(() => {
+    const currentNavItem = dashboardNavItems
+      .flatMap(group => group.items)
+      .find(item => pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/dashboard' && !item.href.includes('#')));
+    if (currentNavItem) {
+      setPageTitle(currentNavItem.title);
+    } else if (pathname === '/dashboard') {
+      setPageTitle('Dashboard Overview');
+    }
+  }, [pathname]);
 
   const handleLogout = async () => {
     try {
@@ -69,7 +85,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       router.push('/auth/login');
     } catch (error) {
       console.error("Logout error:", error);
-      toast({ title: "Logout Failed", description: "Could not log out. Please try again.", variant: "destructive" });
+      toast({ title: "Logout Failed", description: (error as Error).message || "Could not log out. Please try again.", variant: "destructive" });
     }
   };
 
@@ -77,65 +93,90 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-3 text-muted-foreground">Authenticating...</p>
       </div>
     );
   }
   
   return (
     <SidebarProvider defaultOpen>
-      <Sidebar collapsible="icon">
-        <SidebarHeader>
+      <Sidebar collapsible="icon" className="border-r border-sidebar-border">
+        <SidebarHeader className="p-4 border-b border-sidebar-border">
           <Logo />
         </SidebarHeader>
-        <SidebarContent>
+        <SidebarContent className="p-2">
           {dashboardNavItems.map((group, groupIndex) => (
-            <SidebarGroup key={group.title || `group-${groupIndex}`}>
+            <SidebarGroup key={group.title || `group-${groupIndex}`} className="p-0 mb-2">
               {group.title && (
-                <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
+                <SidebarGroupLabel className="px-2 text-xs font-semibold text-sidebar-foreground/70 mb-1">
+                  {group.title}
+                </SidebarGroupLabel>
               )}
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {group.items.map((item) => (
-                    <SidebarMenuItem key={item.href}>
+                  {group.items.map((item: NavItem) => (
+                    <SidebarMenuItem key={item.href} className="my-0.5">
                       <Link href={item.href} legacyBehavior passHref>
                         <SidebarMenuButton
-                          isActive={pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/dashboard' && !item.href.includes('#')) || (item.href.includes('#') && pathname === item.href.split('#')[0])}
-                          tooltip={item.title}
-                          // An item is disabled if its 'disabled' flag is true AND there's no current user.
-                          // If an item should always be enabled, its 'disabled' flag should be false or undefined.
+                          isActive={pathname === item.href || (pathname.startsWith(item.href + '/') && item.href !== '/dashboard') || (item.href.includes('#') && pathname === item.href.split('#')[0])}
+                          tooltip={{content: item.title, side: 'right', align: 'center', className: "ml-2"}}
                           disabled={item.disabled && !currentUser} 
+                          className={cn(
+                            "w-full justify-start",
+                            item.disabled && !currentUser && "cursor-not-allowed opacity-50"
+                          )}
                         >
-                          <item.icon />
-                          <span>{item.title}</span>
+                          <item.icon className="h-5 w-5 shrink-0" />
+                          <span className="truncate">{item.title}</span>
                         </SidebarMenuButton>
                       </Link>
                     </SidebarMenuItem>
                   ))}
                 </SidebarMenu>
               </SidebarGroupContent>
+               {groupIndex < dashboardNavItems.length -1 && <SidebarSeparator className="my-2" />}
             </SidebarGroup>
           ))}
         </SidebarContent>
-        <SidebarFooter>
-          {/* Placeholder for any footer items in sidebar */}
+        <SidebarFooter className="p-2 border-t border-sidebar-border">
+          {/* Example: Quick link to settings or help */}
+           <SidebarMenu>
+            <SidebarMenuItem>
+               <Link href="/dashboard/settings" legacyBehavior passHref>
+                <SidebarMenuButton 
+                  isActive={pathname.startsWith('/dashboard/settings')}
+                  tooltip={{content: "Settings", side: 'right', align: 'center', className: "ml-2"}}
+                  className="w-full justify-start"
+                >
+                  <Settings className="h-5 w-5 shrink-0" />
+                  <span className="truncate">Settings</span>
+                </SidebarMenuButton>
+              </Link>
+            </SidebarMenuItem>
+          </SidebarMenu>
         </SidebarFooter>
       </Sidebar>
-      <SidebarInset className="flex flex-col min-h-screen">
-        <header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6">
+      <SidebarInset className="flex flex-col min-h-screen bg-secondary/30 dark:bg-background">
+        <header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6 shadow-sm">
           <div className="md:hidden"> 
              <SidebarTrigger />
           </div>
           <div className="flex-1">
-            {/* Optional: Breadcrumbs or page title */}
+             <h1 className="text-xl font-semibold text-foreground">{pageTitle}</h1>
           </div>
           <div className="flex items-center gap-2 md:gap-4">
             <ThemeToggle />
-            <Button variant="ghost" size="icon" aria-label="Notifications">
+            <Button variant="ghost" size="icon" aria-label="Notifications" className="relative rounded-full h-9 w-9">
               <Bell className="h-5 w-5" />
+              {/* Example notification badge */}
+              {/* <span className="absolute top-1 right-1 flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+              </span> */}
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                <Button variant="ghost" className="relative h-9 w-9 rounded-full">
                   <Avatar className="h-8 w-8">
                     <AvatarImage src={currentUser?.photoURL || undefined} alt={currentUser?.displayName || "User Avatar"} />
                     <AvatarFallback>
@@ -163,14 +204,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     </DropdownMenuItem>
                      <DropdownMenuItem asChild>
                       <Link href="/dashboard/settings#integrations" className="flex items-center w-full">
-                        <LinkIcon className="mr-2 h-4 w-4" />
+                        <LinkIconLucide className="mr-2 h-4 w-4" />
                         Integrations
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={handleLogout}
-                      className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                      className="text-destructive focus:bg-destructive/10 focus:text-destructive cursor-pointer"
                     >
                       <LogOut className="mr-2 h-4 w-4" />
                       Logout
@@ -196,9 +237,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </DropdownMenu>
           </div>
         </header>
-        <main className="flex-1 p-4 md:p-6 lg:p-8">{children}</main>
+        <main className="flex-1">{children}</main>
         <Footer />
       </SidebarInset>
     </SidebarProvider>
   );
 }
+
