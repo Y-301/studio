@@ -15,9 +15,6 @@ export function PublicHeader() {
               <Link href="/features">Features</Link>
             </Button>
             <Button variant="ghost" asChild>
-              <Link href="/pricing">Pricing</Link>
-            </Button>
-            <Button variant="ghost" asChild>
               <Link href="/learn-more">Learn More</Link>
             </Button>
           </nav>

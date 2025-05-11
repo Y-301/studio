@@ -1,3 +1,4 @@
+
 # WakeSync: Intelligent Smart Home & Wake-Up Automation
 
 WakeSync is a comprehensive smart home application designed to revolutionize your daily routines, starting with a personalized and intelligent wake-up experience. It seamlessly integrates device control, advanced routine automation, insightful data analytics, and AI-powered suggestions to create a truly smart and responsive living environment.
@@ -31,7 +32,6 @@ WakeSync offers a rich set of features designed to cater to various aspects of s
 *   **Informational Pages:**
     *   **Landing Page (`/`):** Introduces WakeSync and its core benefits.
     *   **Features Page (`/features`):** Provides a detailed overview of all application functionalities.
-    *   **Pricing Page (`/pricing`):** Outlines different subscription tiers and their benefits.
     *   **Learn More Page (`/learn-more`):** Offers insights into the project's mission and philosophy.
 
 ### Foundation for Data Science
