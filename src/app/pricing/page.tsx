@@ -19,7 +19,6 @@ const pricingTiers = [
     ],
     cta: 'Get Started',
     href: '/auth/signup',
-    dataAiHint: 'price tag free'
   },
   {
     name: 'Pro',
@@ -36,7 +35,6 @@ const pricingTiers = [
     cta: 'Choose Pro',
     href: '/auth/signup?plan=pro', // Example query param
     isPopular: true,
-    dataAiHint: 'price tag premium'
   },
   {
     name: 'Enterprise',
@@ -51,7 +49,6 @@ const pricingTiers = [
     ],
     cta: 'Contact Sales',
     href: '/contact-sales', // Placeholder for a contact page
-    dataAiHint: 'price tag enterprise'
   },
 ];
 
@@ -79,9 +76,7 @@ export default function PricingPage() {
                   </div>
                 )}
                 <CardHeader className="text-center">
-                   <div className="w-full h-40 bg-muted rounded-md mb-4 mx-auto flex items-center justify-center" data-ai-hint={tier.dataAiHint}>
-                       <p className="text-muted-foreground text-sm">Visual for {tier.name} Plan</p>
-                   </div>
+                   {/* Removed Visual Placeholder */}
                   <CardTitle className="text-3xl">{tier.name}</CardTitle>
                   <p className="text-4xl font-bold text-primary mt-2">
                     {tier.price}

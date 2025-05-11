@@ -15,7 +15,7 @@ interface DeviceCardProps {
   name: string;
   type: string;
   status: string;
-  icon: LucideIcon; // Changed from Icon to icon
+  icon: LucideIcon;
   room?: string;
   dataAiHint?: string;
   brightness?: number;
@@ -37,7 +37,7 @@ export function DeviceCard({
   name, 
   type, 
   status, 
-  icon: IconComponent, // Changed from Icon to icon, and aliased to IconComponent for JSX
+  icon: IconComponent,
   room, 
   dataAiHint,
   brightness,
@@ -100,14 +100,7 @@ export function DeviceCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="flex-grow flex flex-col justify-center items-start p-4 space-y-3">
-        <div 
-            className="h-[120px] w-full bg-muted rounded-md mb-3 flex items-center justify-center"
-            data-ai-hint={dataAiHint || type}
-        >
-            <span className="text-muted-foreground text-center p-2 text-sm">
-                Visual for <br/> <strong className="capitalize">{type}</strong>: {name}
-            </span>
-        </div>
+        {/* Removed Visual Placeholder Div */}
         <p className="text-sm font-semibold text-foreground self-center">
           Status: {isToggleable ? (isOn ? "On" : "Off") : status}
         </p>

@@ -11,19 +11,16 @@ const features = [
     icon: <Watch className="h-10 w-10 text-primary" />,
     title: 'Wristband Integration',
     description: 'Connect your smart wristband for seamless health tracking and enhanced automation.',
-    dataAiHint: 'smartwatch health'
   },
   {
     icon: <Sunrise className="h-10 w-10 text-primary" />,
     title: 'Smart Wake-Up',
     description: 'Gently wake up with simulated sunrises and customizable soundscapes, fully integrated with your home.',
-    dataAiHint: 'sunrise alarm'
   },
   {
     icon: <ListChecks className="h-10 w-10 text-primary" />,
     title: 'Custom Routines',
     description: 'Create personalized routines that automate your smart devices based on time, events, or wristband data.',
-    dataAiHint: 'automation checklist'
   },
 ];
 
@@ -53,10 +50,7 @@ export default function HomePage() {
               </Button>
             </div>
             <div className="mt-16">
-              {/* Updated to generic placeholder, actual image would be better */}
-              <div className="w-full max-w-3xl h-auto aspect-video bg-muted rounded-lg shadow-xl mx-auto flex items-center justify-center" data-ai-hint="dashboard interface">
-                <p className="text-muted-foreground">Dashboard Showcase Placeholder</p>
-              </div>
+              {/* Removed Dashboard Showcase Placeholder */}
             </div>
           </div>
         </section>
@@ -75,9 +69,7 @@ export default function HomePage() {
                     <CardTitle className="mt-4 text-2xl">{feature.title}</CardTitle>
                   </CardHeader>
                   <CardContent className="flex-grow text-center">
-                     <div className="w-full h-48 bg-muted rounded-md mb-4 mx-auto flex items-center justify-center" data-ai-hint={feature.dataAiHint}>
-                       <p className="text-muted-foreground text-sm">Feature Visual: {feature.title}</p>
-                     </div>
+                     {/* Removed Feature Visual Placeholder */}
                     <CardDescription className="text-base mt-4">{feature.description}</CardDescription>
                   </CardContent>
                 </Card>

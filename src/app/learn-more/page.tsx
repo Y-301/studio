@@ -32,9 +32,7 @@ export default function LearnMorePage() {
               <CardContent className="text-lg text-muted-foreground space-y-4">
                 <p>At WakeSync, we believe that technology should simplify your life, not complicate it. Our mission is to create a seamless and intuitive smart home experience that starts with the most important part of your day: waking up.</p>
                 <p>We aim to empower you with tools that automate mundane tasks, provide valuable insights into your well-being, and create a comfortable, responsive home environment. We're passionate about integrating cutting-edge AI with user-friendly design to deliver a product that truly enhances your daily routine.</p>
-                 <div className="w-full h-56 bg-muted rounded-md my-6 mx-auto flex items-center justify-center" data-ai-hint="team working collaboration">
-                    <p className="text-muted-foreground text-sm p-2 text-center">Visual: Team collaborating on WakeSync</p>
-                 </div>
+                 {/* Removed Team Collaboration Visual Placeholder */}
               </CardContent>
             </Card>
           </section>
@@ -45,27 +43,21 @@ export default function LearnMorePage() {
               <Card>
                 <CardHeader><CardTitle>1. Connect</CardTitle></CardHeader>
                 <CardContent>
-                    <div className="w-full h-32 bg-muted rounded-md mb-3 mx-auto flex items-center justify-center" data-ai-hint="devices connecting network">
-                        <p className="text-muted-foreground text-xs p-1 text-center">Connect Devices</p>
-                    </div>
+                    {/* Removed Connect Devices Visual Placeholder */}
                     <p className="text-muted-foreground">Easily link your smart wristbands, lights, thermostats, speakers, and other compatible devices to the WakeSync platform through our intuitive interface.</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader><CardTitle>2. Personalize</CardTitle></CardHeader>
                 <CardContent>
-                    <div className="w-full h-32 bg-muted rounded-md mb-3 mx-auto flex items-center justify-center" data-ai-hint="settings configuration user">
-                        <p className="text-muted-foreground text-xs p-1 text-center">Personalize Settings</p>
-                    </div>
+                    {/* Removed Personalize Settings Visual Placeholder */}
                     <p className="text-muted-foreground">Customize your wake-up simulations, create powerful routines, and set your preferences. Tell WakeSync how you want your smart home to behave.</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader><CardTitle>3. Automate & Analyze</CardTitle></CardHeader>
                 <CardContent>
-                    <div className="w-full h-32 bg-muted rounded-md mb-3 mx-auto flex items-center justify-center" data-ai-hint="charts graphs ai">
-                         <p className="text-muted-foreground text-xs p-1 text-center">Automate & Analyze</p>
-                    </div>
+                    {/* Removed Automate & Analyze Visual Placeholder */}
                     <p className="text-muted-foreground">Let WakeSync's AI manage your routines and provide insights from your data. Enjoy automated adjustments and understand your patterns for a better lifestyle.</p>
                 </CardContent>
               </Card>
