@@ -1,5 +1,5 @@
 // backend/src/services/deviceService.ts
-import type { Device } from '../models/device'; // Assuming this model is in backend/src/models
+import type { Device } from '../models/device'; 
 import {
   getAllItems,
   getItemById,
@@ -78,6 +78,8 @@ export const updateDevice = async (deviceId: string, userId: string, updateData:
   const updatedDevice: Device = {
     ...existingDevice,
     ...updateData,
+    // Ensure settings are merged, not overwritten, if only partial settings are provided
+    settings: updateData.settings ? { ...existingDevice.settings, ...updateData.settings } : existingDevice.settings,
     updatedAt: new Date().toISOString(),
   };
   await upsertItem<Device>(DEVICES_DB_FILE, deviceId, updatedDevice);
@@ -86,10 +88,10 @@ export const updateDevice = async (deviceId: string, userId: string, updateData:
 };
 
 /**
- * Update device status.
+ * Update device status and optionally settings.
  * @param deviceId The ID of the device.
  * @param userId The ID of the user.
- * @param status The new status.
+ * @param status The new status (can be device specific, e.g. "on", "22", "closed").
  * @param settings Optional settings to update alongside status.
  * @returns The updated device or null.
  */
@@ -102,9 +104,11 @@ export const updateDeviceStatus = async (deviceId: string, userId: string, statu
 
   const updatePayload: Partial<Omit<Device, 'id' | 'userId' | 'createdAt' | 'updatedAt'>> = { status };
   if (settings) {
+    // Ensure settings are merged correctly, not overwritten if partial settings are passed
     updatePayload.settings = { ...device.settings, ...settings };
   }
-
+  
+  log('info', `Updating device status for ${deviceId} to ${status}`, userId, { component: 'DeviceService', settings });
   return updateDevice(deviceId, userId, updatePayload);
 };
 
@@ -133,43 +137,96 @@ export const deleteDeviceByIdAndUserId = async (deviceId: string, userId: string
  * This is for demo purposes to show "real-time" fake data.
  */
 export const simulateDeviceChanges = async (userId: string): Promise<void> => {
+  log('debug', `Starting device change simulation for user ${userId}`, userId, { component: 'DeviceService' });
   const userDevices = await getDevicesByUserId(userId);
-  if (userDevices.length === 0) return;
+  if (userDevices.length === 0) {
+    log('debug', `No devices found for user ${userId} to simulate changes.`, userId, { component: 'DeviceService' });
+    return;
+  }
 
   const db = await readDbFile<Device>(DEVICES_DB_FILE);
-  let changed = false;
+  let changesMade = false;
 
   for (const device of userDevices) {
-    if (Math.random() < 0.2) { // 20% chance to change status
-      if (device.type === 'light' || device.type === 'switch' || device.type === 'fan') {
-        const newStatus = db[device.id].status === 'on' ? 'off' : 'on';
-        db[device.id].status = newStatus;
-        db[device.id].updatedAt = new Date().toISOString();
-        if (newStatus === 'on' && device.type === 'light' && db[device.id].settings) {
-            db[device.id].settings.brightness = Math.floor(Math.random() * 81) + 20; // brightness 20-100
+    try {
+      if (Math.random() < 0.25) { // 25% chance to change status for more noticeable simulation
+        let newStatus = db[device.id].status;
+        let newSettings = { ...db[device.id].settings };
+        let changed = false;
+
+        switch (device.type) {
+          case 'light':
+            newStatus = db[device.id].status === 'on' ? 'off' : 'on';
+            if (newStatus === 'on') {
+              newSettings.brightness = Math.floor(Math.random() * 81) + 20; // brightness 20-100
+            }
+            changed = true;
+            break;
+          case 'thermostat':
+            const currentTemp = db[device.id].settings?.temperature || 20;
+            const tempChange = Math.floor(Math.random() * 5) - 2; // -2 to +2 change
+            newSettings.temperature = Math.max(15, Math.min(30, currentTemp + tempChange)); // Keep temp between 15-30
+            newStatus = newSettings.temperature > 0 ? String(newSettings.temperature) : 'off'; // Reflect temp in status
+            changed = true;
+            break;
+          case 'speaker':
+            newStatus = db[device.id].status === 'on' ? 'off' : 'on';
+            if (newStatus === 'on') {
+              newSettings.volume = Math.floor(Math.random() * 71) + 10; // volume 10-80
+            }
+            changed = true;
+            break;
+          case 'blinds':
+            newStatus = db[device.id].status === 'open' ? 'closed' : (Math.random() < 0.5 ? 'open' : 'partially_open');
+            newSettings.position = newStatus === 'open' ? 100 : newStatus === 'closed' ? 0 : 50;
+            changed = true;
+            break;
+          case 'fan':
+          case 'switch':
+          case 'tv':
+            newStatus = db[device.id].status === 'on' ? 'off' : 'on';
+            changed = true;
+            break;
+          case 'sensor':
+            // Example: Temperature sensor
+            if (db[device.id].settings?.unit === "C") {
+                const currentReading = db[device.id].settings?.last_reading || 21;
+                const readingChange = (Math.random() * 2 - 1).toFixed(1); // -1.0 to +1.0
+                newSettings.last_reading = parseFloat((currentReading + parseFloat(readingChange)).toFixed(1));
+                newStatus = `${newSettings.last_reading}°C`;
+                changed = true;
+            }
+            // Add more sensor types as needed
+            break;
+          default:
+            // For 'other' devices, maybe a generic on/off
+            if (Math.random() < 0.5) {
+                newStatus = db[device.id].status === 'active' ? 'inactive' : 'active';
+                changed = true;
+            }
         }
-        changed = true;
-        log('debug', `Simulated status change for device ${device.id} to ${newStatus}`, userId, { component: 'DeviceService' });
-      } else if (device.type === 'thermostat' && db[device.id].settings) {
-        const newTemp = Math.floor(Math.random() * 10) + 18; // temp 18-27
-        db[device.id].settings.temperature = newTemp;
-        db[device.id].status = newTemp > 0 ? 'on' : 'off'; // Basic status logic
-        db[device.id].updatedAt = new Date().toISOString();
-        changed = true;
-        log('debug', `Simulated temp change for device ${device.id} to ${newTemp}°C`, userId, { component: 'DeviceService' });
+
+        if (changed) {
+          db[device.id].status = newStatus;
+          db[device.id].settings = newSettings;
+          db[device.id].updatedAt = new Date().toISOString();
+          changesMade = true;
+          log('info', `Simulated change for device ${device.name} (${device.id}): status=${newStatus}, settings=${JSON.stringify(newSettings)}`, userId, { component: 'DeviceService' });
+        }
       }
+    } catch(err) {
+        log('error', `Error simulating change for device ${device.id}: ${(err as Error).message}`, userId, { component: 'DeviceService', stack: (err as Error).stack });
     }
   }
 
-  if (changed) {
-    await writeDbFile(DEVICES_DB_FILE, db);
-    log('info', `Simulated device changes applied for user ${userId}`, userId, { component: 'DeviceService' });
+  if (changesMade) {
+    try {
+      await writeDbFile(DEVICES_DB_FILE, db);
+      log('info', `Successfully wrote simulated device changes for user ${userId} to DB.`, userId, { component: 'DeviceService' });
+    } catch (err) {
+      log('error', `Error writing simulated device changes to DB for user ${userId}: ${(err as Error).message}`, userId, { component: 'DeviceService', stack: (err as Error).stack });
+    }
+  } else {
+    log('debug', `No device changes simulated in this cycle for user ${userId}.`, userId, { component: 'DeviceService' });
   }
 };
-
-// Periodically simulate device changes (e.g., every 10 seconds)
-// This is a simple way to create "live" data. For a real app, this would be event-driven from actual devices.
-// setInterval(() => {
-//   // Assuming a default/demo user ID for global simulation
-//   simulateDeviceChanges('user1'); 
-// }, 15000); // Simulate every 15 seconds

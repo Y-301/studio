@@ -1,55 +1,37 @@
 // backend/services/wristbandService.ts
-
-// You might need to import a model for wristband data or user
-// import { User } from '../models/user';
-// You might need to import a routine triggering function
-// import { triggerRoutine } from './routineService';
-
-// You might need to import your database utility
-// import { getDb } from '../utils/db';
 import { log } from './logService';
+// import { triggerRoutine } from './routineService'; // Uncomment if wristband events should trigger routines
 
-// Example interface for wristband event data
 export interface WristbandEvent {
   timestamp: Date;
-  userId: string; // The user associated with the wristband
-  eventType: 'wake_up' | 'sleep_detected' | 'activity_spike' | 'device_interaction'; // Example event types
-  details?: any; // Optional details about the event
+  userId: string; 
+  eventType: 'wake_up' | 'sleep_detected' | 'activity_spike' | 'device_interaction' | 'heart_rate_update' | 'steps_update'; 
+  details?: any; 
 }
 
 /**
- * Placeholder function to process incoming wristband data.
- * Replace with actual logic to handle data from your wristband integration.
+ * Processes incoming wristband data.
  * @param eventData - The data received from the wristband.
- * @returns A promise that resolves when the data is processed.
  */
 export const processWristbandEvent = async (eventData: WristbandEvent): Promise<void> => {
-  // console.log('Processing wristband event:', eventData); // Keep this for quick debug if needed
-  log('info', `Processing wristband event: ${eventData.eventType}`, eventData.userId, { component: 'WristbandService', details: eventData.details });
-  // TODO: Implement actual wristband data processing
-  // This might involve:
-  // - Validating the incoming data
-  // - Storing the data in the database (e.g., a new wristband_events.json file)
-  // - Triggering routines based on events (e.g., 'wake_up' event triggers a morning routine)
-  // - Updating user status based on sleep/activity data
+  log('info', `Processing wristband event: ${eventData.eventType} for user ${eventData.userId}`, eventData.userId, { component: 'WristbandService', details: eventData.details });
+  
+  // TODO: Persist eventData to a database (e.g., wristband_events.json or a proper DB table)
+  // Example: await appendToJsonFile('wristband_events.json', eventData);
 
   if (eventData.eventType === 'wake_up') {
     log('info',`Wristband detected wake up for user ${eventData.userId}. Potential routine trigger.`, eventData.userId, { component: 'WristbandService' });
     // TODO: Implement logic to potentially trigger a wake-up routine
     // Example:
     // const morningRoutine = await findRoutineByName(eventData.userId, 'Morning Wake Up');
-    // if (morningRoutine) {
+    // if (morningRoutine && morningRoutine.isEnabled) {
     //   await triggerRoutine(morningRoutine.id, eventData.userId);
     // }
   }
-
-  // Example: Store the event in a database or log file
-  // For demo, we are just logging via logService. If persisting, add DB write here.
 };
 
 /**
- * Placeholder function to get recent wristband events for a user.
- * Replace with actual log retrieval from your logging source.
+ * Gets recent wristband events for a user (mocked for now).
  * @param userId - The ID of the user.
  * @param limit - Optional limit on the number of events.
  * @returns A promise that resolves with an array of wristband events.
@@ -58,28 +40,43 @@ export const getWristbandEvents = async (userId: string, limit: number = 10): Pr
   log('info', `Fetching wristband events for user: ${userId} (limit: ${limit})`, userId, { component: 'WristbandService' });
   // TODO: Implement database query to fetch wristband events by userId from a persisted store
 
-  // Corrected Placeholder data - using exact literal types for 'eventType' and explicitly casting
   const placeholderData: WristbandEvent[] = [
-    { timestamp: new Date(Date.now() - 3600000), userId: userId, eventType: 'wake_up', details: { confidence: 0.9, source: "sample" } },
-    { timestamp: new Date(Date.now() - 7200000), userId: userId, eventType: 'sleep_detected', details: { duration: 8, source: "sample" } },
-    { timestamp: new Date(Date.now() - 10800000), userId: userId, eventType: 'activity_spike', details: { type: 'running', source: "sample" } },
-    { timestamp: new Date(Date.now() - 14400000), userId: userId, eventType: 'device_interaction', details: { deviceId: 'device1', action: 'turn_on', source: "sample" } },
+    { timestamp: new Date(Date.now() - 3600000), userId: userId, eventType: 'wake_up', details: { confidence: 0.9, source: "sample_history" } },
+    { timestamp: new Date(Date.now() - 7200000), userId: userId, eventType: 'sleep_detected', details: { durationHours: 8, stage: 'deep', source: "sample_history" } },
+    { timestamp: new Date(Date.now() - 10800000), userId: userId, eventType: 'activity_spike', details: { type: 'running', durationMinutes: 30, source: "sample_history" } },
   ]; 
 
   return placeholderData.slice(0, limit);
 };
 
 
-// Store steps per user for simulation continuity
-let userSteps: { [userId: string]: number } = {}; 
-let userSleepState: { [userId: string]: 'awake' | 'light' | 'deep' | 'rem' } = {};
-let userSleepCyclePosition: { [userId: string]: number} = {}; // 0-1 progress in current sleep state
+// Simulation State (in-memory, reset on server restart)
+interface UserSimulationState {
+  steps: number;
+  currentSleepState: 'awake' | 'light' | 'deep' | 'rem';
+  timeInCurrentSleepStateMinutes: number;
+  lastHeartRate: number;
+}
+const userSimulationStates: { [userId: string]: UserSimulationState } = {};
 
-const SLEEP_STATE_DURATION_MINUTES = { // Approximate durations
-    awake: 5, 
-    light: 30,
-    deep: 20,
-    rem: 15,
+const SLEEP_STATE_TRANSITIONS: Record<UserSimulationState['currentSleepState'], Array<{nextState: UserSimulationState['currentSleepState'], probability: number, minDuration: number, maxDuration: number}>> = {
+    awake: [
+        { nextState: 'light', probability: 0.8, minDuration: 5, maxDuration: 20 }, // More likely to fall asleep if trying
+        { nextState: 'awake', probability: 0.2, minDuration: 15, maxDuration: 60 }, // Stay awake
+    ],
+    light: [
+        { nextState: 'deep', probability: 0.6, minDuration: 20, maxDuration: 40 },
+        { nextState: 'rem', probability: 0.3, minDuration: 10, maxDuration: 20 },
+        { nextState: 'awake', probability: 0.1, minDuration: 2, maxDuration: 10 }, // Briefly wake up
+    ],
+    deep: [
+        { nextState: 'light', probability: 0.7, minDuration: 20, maxDuration: 40 },
+        { nextState: 'rem', probability: 0.3, minDuration: 15, maxDuration: 30 }, // Less common to go directly to REM but possible
+    ],
+    rem: [
+        { nextState: 'light', probability: 0.8, minDuration: 10, maxDuration: 25 },
+        { nextState: 'awake', probability: 0.2, minDuration: 1, maxDuration: 5 }, // End of cycle, might wake up
+    ],
 };
 
 /**
@@ -87,99 +84,70 @@ const SLEEP_STATE_DURATION_MINUTES = { // Approximate durations
  * @param userId The ID of the user for whom to simulate data.
  */
 export const simulateAndProcessWristbandData = async (userId: string): Promise<void> => {
-  if (userSteps[userId] === undefined) {
-    userSteps[userId] = Math.floor(Math.random() * 1500) + 500; // Initial random steps (500-2000)
+  if (!userSimulationStates[userId]) {
+    userSimulationStates[userId] = {
+      steps: Math.floor(Math.random() * 1500) + 500, // Initial random steps (500-2000)
+      currentSleepState: 'awake',
+      timeInCurrentSleepStateMinutes: 0,
+      lastHeartRate: 75,
+    };
   }
-  if (userSleepState[userId] === undefined) {
-      userSleepState[userId] = 'awake';
-      userSleepCyclePosition[userId] = 0;
-  }
+  const state = userSimulationStates[userId];
+  const now = new Date();
+  const currentHour = now.getHours();
 
-  const currentHour = new Date().getHours();
-  const isNightTime = currentHour >= 22 || currentHour < 7; // Higher chance of sleep
-
-  // Simulate Heart Rate (fluctuates more if awake and active)
+  // Simulate Heart Rate
   let heartRate: number;
-  if (userSleepState[userId] !== 'awake' && isNightTime) {
-      heartRate = 50 + Math.floor(Math.random() * 20); // 50-70 bpm during sleep
-  } else {
-      heartRate = 65 + Math.floor(Math.random() * 35); // 65-100 bpm when awake
-      if (Math.random() < 0.1) heartRate += Math.floor(Math.random() * 30); // Occasional spike if active
-  }
+  if (state.currentSleepState === 'deep') heartRate = state.lastHeartRate + (Math.random() * 4 - 2) - 2; // Lower HR in deep sleep
+  else if (state.currentSleepState !== 'awake') heartRate = state.lastHeartRate + (Math.random() * 6 - 3) -1; // Slightly lower during other sleep
+  else heartRate = state.lastHeartRate + (Math.random() * 10 - 5); // More variable when awake
+  heartRate = Math.max(45, Math.min(180, Math.round(heartRate))); // Clamp HR
+  state.lastHeartRate = heartRate;
+  await processWristbandEvent({ timestamp: now, userId, eventType: 'heart_rate_update', details: { value: heartRate, unit: 'bpm', source: 'simulation' } });
 
-  // Simulate Steps (only if awake)
-  if (userSleepState[userId] === 'awake' && !isNightTime) {
-    userSteps[userId] += Math.floor(Math.random() * (currentHour > 7 && currentHour < 19 ? 100 : 30)); // More steps during day
-  }
 
-  // Simulate Motion Detection (more likely if awake)
-  const motionDetected = userSleepState[userId] === 'awake' && Math.random() < 0.25;
+  // Simulate Steps (only if awake and not late night/early morning unless active)
+  const isGenerallyActiveTime = currentHour > 7 && currentHour < 22;
+  if (state.currentSleepState === 'awake' && isGenerallyActiveTime) {
+    state.steps += Math.floor(Math.random() * (currentHour > 8 && currentHour < 19 ? 50 : 15)); // More steps during typical day hours
+    await processWristbandEvent({ timestamp: now, userId, eventType: 'steps_update', details: { totalToday: state.steps, source: 'simulation' } });
+  }
 
   // Simulate Sleep State Transitions
-  let eventType: WristbandEvent['eventType'] = 'activity_spike'; // Default
-  let sleepDetails: any = {};
+  state.timeInCurrentSleepStateMinutes += 1; // Assuming simulation interval is roughly 1 minute for sleep state changes
 
-  if (isNightTime || userSleepState[userId] !== 'awake') { // Only manage sleep cycle if night or already sleeping
-    userSleepCyclePosition[userId] += (1 / (SLEEP_STATE_DURATION_MINUTES[userSleepState[userId]] * 12)); // Assume 5s interval for 12 ticks per min
-
-    if (userSleepCyclePosition[userId] >= 1) { // Transition state
-        userSleepCyclePosition[userId] = 0; // Reset position
-        const currentState = userSleepState[userId];
-        if (currentState === 'awake') userSleepState[userId] = 'light';
-        else if (currentState === 'light') userSleepState[userId] = Math.random() < 0.7 ? 'deep' : 'rem'; // Higher chance of deep
-        else if (currentState === 'deep') userSleepState[userId] = 'light'; // Go back to light or REM
-        else if (currentState === 'rem') userSleepState[userId] = 'light'; // Cycle back to light
-        
-        // If it's morning hours and transitioning out of sleep
-        if (currentHour >= 6 && currentHour <= 8 && (currentState === 'light' || currentState === 'rem') && Math.random() < 0.3) {
-            userSleepState[userId] = 'awake';
-        }
+  const possibleTransitions = SLEEP_STATE_TRANSITIONS[state.currentSleepState];
+  let transitioned = false;
+  for (const transition of possibleTransitions) {
+    if (state.timeInCurrentSleepStateMinutes >= transition.minDuration && Math.random() < (transition.probability / ((transition.maxDuration - transition.minDuration) || 1) )) {
+      const oldSleepState = state.currentSleepState;
+      state.currentSleepState = transition.nextState;
+      state.timeInCurrentSleepStateMinutes = 0;
+      transitioned = true;
+      log('debug', `User ${userId} sleep state changed from ${oldSleepState} to ${state.currentSleepState}`, userId, {component: 'WristbandSimulation'});
+      
+      if (oldSleepState !== 'awake' && state.currentSleepState === 'awake') {
+        await processWristbandEvent({ timestamp: now, userId, eventType: 'wake_up', details: { reason: 'cycle_end', confidence: Math.random() * 0.3 + 0.7, source: 'simulation' } });
+      } else {
+        await processWristbandEvent({ timestamp: now, userId, eventType: 'sleep_detected', details: { stage: state.currentSleepState, durationInStageMinutes: 0, source: 'simulation' } });
+      }
+      break; 
     }
-  } else { // Daytime, likely awake
-      userSleepState[userId] = 'awake';
-      userSleepCyclePosition[userId] = 0;
   }
-  
-  if (userSleepState[userId] !== 'awake') {
-      eventType = 'sleep_detected';
-      sleepDetails = {
-          currentStage: userSleepState[userId],
-          estimatedTimeInStage: `${(userSleepCyclePosition[userId] * SLEEP_STATE_DURATION_MINUTES[userSleepState[userId]]).toFixed(1)} mins`,
-      };
-  } else if (motionDetected) {
-      eventType = 'activity_spike';
-  } else {
-      // Simulate occasional device interactions if awake
-      eventType = Math.random() < 0.05 ? 'device_interaction' : 'activity_spike';
-  }
-  // If determined to be awake after sleep simulation logic
-  if (userSleepState[userId] === 'awake' && eventType === 'sleep_detected') {
-      eventType = 'wake_up';
-      sleepDetails = { confidence: Math.random() * 0.3 + 0.7 }; // 0.7-1.0 confidence
+  if (!transitioned && state.currentSleepState !== 'awake') {
+     // If still in the same sleep state, just log it as a continuation for "sleep_detected" type event if needed for analytics
+     // Or this can be omitted if only transitions are important
+     await processWristbandEvent({ timestamp: now, userId, eventType: 'sleep_detected', details: { stage: state.currentSleepState, durationInStageMinutes: state.timeInCurrentSleepStateMinutes, source: 'simulation_ongoing' } });
   }
 
 
-  const eventData: WristbandEvent = {
-    timestamp: new Date(),
-    userId: userId,
-    eventType: eventType,
-    details: {
-      heartRate,
-      steps: userSteps[userId],
-      motionDetected,
-      currentSleepState: userSleepState[userId],
-      ...sleepDetails,
-      source: 'simulation',
-      ...(eventType === 'device_interaction' && { deviceId: `sim_device_${Math.floor(Math.random()*3)}`, action: (Math.random() < 0.5 ? 'on' : 'off') })
-    },
-  };
-
-  await processWristbandEvent(eventData);
-  // No need for separate log call here as processWristbandEvent already logs.
+  // Simulate occasional activity spikes or device interactions if awake
+  if (state.currentSleepState === 'awake') {
+    if (Math.random() < 0.05) { // 5% chance of an activity spike
+      await processWristbandEvent({ timestamp: now, userId, eventType: 'activity_spike', details: { type: 'moderate', durationSeconds: 30, source: 'simulation' } });
+    } else if (Math.random() < 0.02) { // 2% chance of a device interaction
+       await processWristbandEvent({ timestamp: now, userId, eventType: 'device_interaction', details: { deviceId: `sim_device_${Math.floor(Math.random()*3)}`, action: (Math.random() < 0.5 ? 'on' : 'off'), source: 'simulation' }});
+    }
+  }
+  log('debug', `Wristband simulation cycle complete for ${userId}. State: ${JSON.stringify(state)}`, userId, {component: 'WristbandSimulation'});
 };
-
-
-// You might add functions to connect a wristband, manage wristband settings, etc.
-// export const connectWristband = async (userId: string, connectionData: any): Promise<boolean> => { ... };
-// export const getWristbandStatus = async (userId: string): Promise<any> => { ... };
-
