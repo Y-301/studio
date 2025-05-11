@@ -1,0 +1,36 @@
+
+{
+  "light001": {
+    "id": "light001",
+    "userId": "user1",
+    "name": "Living Room Lamp",
+    "type": "light",
+    "status": "off",
+    "settings": { "brightness": 0 },
+    "room": "Living Room",
+    "createdAt": "2024-01-01T09:00:00.000Z",
+    "updatedAt": "2024-01-01T09:00:00.000Z"
+  },
+  "thermostat001": {
+    "id": "thermostat001",
+    "userId": "user1",
+    "name": "Main Thermostat",
+    "type": "thermostat",
+    "status": "off",
+    "settings": { "temperature": 18 },
+    "room": "Hallway",
+    "createdAt": "2024-01-01T09:05:00.000Z",
+    "updatedAt": "2024-01-01T09:05:00.000Z"
+  },
+  "speaker001": {
+    "id": "speaker001",
+    "userId": "user1",
+    "name": "Kitchen Speaker",
+    "type": "speaker",
+    "status": "off",
+    "settings": { "volume": 0, "source": "spotify" },
+    "room": "Kitchen",
+    "createdAt": "2024-01-01T09:10:00.000Z",
+    "updatedAt": "2024-01-01T09:10:00.000Z"
+  }
+}

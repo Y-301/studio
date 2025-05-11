@@ -1,2 +1,35 @@
 
-{}
+{
+  "sampleRoutine123": {
+    "id": "sampleRoutine123",
+    "userId": "user1",
+    "name": "Daily Morning Check",
+    "description": "A sample routine that runs every morning.",
+    "trigger": {
+      "type": "time",
+      "details": {
+        "time": "08:00",
+        "timezone": "America/New_York"
+      }
+    },
+    "actions": [
+      {
+        "deviceId": "light001",
+        "actionType": "turn_on",
+        "actionData": {
+          "brightness": 50
+        }
+      },
+      {
+        "deviceId": "thermostat001",
+        "actionType": "set_temperature",
+        "actionData": {
+          "temperature": 21
+        }
+      }
+    ],
+    "isEnabled": true,
+    "createdAt": "2024-01-01T10:00:00.000Z",
+    "updatedAt": "2024-01-01T10:00:00.000Z"
+  }
+}

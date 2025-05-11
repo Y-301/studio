@@ -8,8 +8,13 @@ const DATA_DIR = path.resolve(__dirname, '../../data');
 const ensureDataDir = async () => {
   try {
     await fs.access(DATA_DIR);
-  } catch {
-    await fs.mkdir(DATA_DIR, { recursive: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      console.log(`Data directory ${DATA_DIR} not found. Creating it.`);
+      await fs.mkdir(DATA_DIR, { recursive: true });
+    } else {
+      throw error; // Re-throw other errors
+    }
   }
 };
 
@@ -18,7 +23,7 @@ interface DbData<T> {
 }
 
 export const readDbFile = async <T>(filename: string): Promise<DbData<T>> => {
-  await ensureDataDir();
+  await ensureDataDir(); // Ensure directory exists before reading
   const filePath = path.join(DATA_DIR, filename);
   try {
     const data = await fs.readFile(filePath, 'utf-8');
@@ -26,15 +31,17 @@ export const readDbFile = async <T>(filename: string): Promise<DbData<T>> => {
   } catch (error) {
     // If file doesn't exist or is invalid JSON, return empty object
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      console.warn(`DB file ${filename} not found. Returning empty object.`);
       return {};
     }
     console.error(`Error reading DB file ${filename}:`, error);
-    return {}; // Or throw error depending on desired behavior
+    // For robustness, return empty object on other read errors too, or re-throw
+    return {}; 
   }
 };
 
 export const writeDbFile = async <T>(filename: string, data: DbData<T>): Promise<void> => {
-  await ensureDataDir();
+  await ensureDataDir(); // Ensure directory exists before writing
   const filePath = path.join(DATA_DIR, filename);
   try {
     await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
