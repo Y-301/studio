@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -5,8 +6,8 @@ import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+// import { signInWithEmailAndPassword } from "firebase/auth"; // Firebase original
+import { auth } from "@/lib/firebase"; // Now imports mock auth
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -46,27 +47,28 @@ export default function LoginPage() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, values.email, values.password);
+      // Using mock auth.signInWithEmailAndPassword
+      await auth.signInWithEmailAndPassword(auth, values.email, values.password); 
       toast({
-        title: "Login Successful",
+        title: "Login Successful (Mock)",
         description: "Redirecting to your dashboard...",
       });
       router.push("/dashboard");
     } catch (error: any) {
-      console.error("Login error:", error);
+      console.error("Login error (Mock):", error);
       let errorMessage = "Could not sign in. Please check your credentials and try again.";
       
-      if (error.code === 'auth/api-key-not-valid') {
-        errorMessage = "Application configuration error: Firebase API key is not valid. Please contact support or check the environment setup.";
-        console.error("CRITICAL: Firebase API Key is not valid. Ensure NEXT_PUBLIC_FIREBASE_API_KEY in your .env file is correct and the Firebase project is properly configured for this domain.");
-      } else if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-        errorMessage = "Invalid email or password. Please try again.";
-      } else if (error.code === 'auth/too-many-requests') {
-        errorMessage = "Too many failed login attempts. Please try again later.";
+      if (error.message?.includes('auth/api-key-not-valid')) {
+        errorMessage = "Application configuration error: Firebase API key is not valid. Please contact support or check the environment setup. (Mock mode active)";
+         console.error("CRITICAL: Firebase API Key is not valid. Ensure NEXT_PUBLIC_FIREBASE_API_KEY in your .env file is correct and the Firebase project is properly configured for this domain. (Mock mode active)");
+      } else if (error.message?.includes('auth/invalid-credential') || error.message?.includes('auth/user-not-found') || error.message?.includes('auth/wrong-password')) {
+        errorMessage = "Invalid email or password. Please try again. (Mock)";
+      } else if (error.message?.includes('auth/too-many-requests')) {
+        errorMessage = "Too many failed login attempts. Please try again later. (Mock)";
       }
       
       toast({
-        title: "Login Failed",
+        title: "Login Failed (Mock)",
         description: errorMessage,
         variant: "destructive",
       });

@@ -4,8 +4,8 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { onAuthStateChanged, signOut, User } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+// import { onAuthStateChanged, signOut, User } from 'firebase/auth'; // Firebase original
+import { auth, type MockUser } from '@/lib/firebase'; // Now imports mock auth
 import {
   SidebarProvider,
   Sidebar,
@@ -20,6 +20,7 @@ import {
   SidebarGroup,
   SidebarGroupLabel,
   SidebarGroupContent,
+  SidebarSeparator, // Added SidebarSeparator import
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -28,7 +29,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
+  DropdownMenuSeparator as DropdownMenuSeparatorComponent, // Renamed to avoid conflict
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Bell, LogOut, UserCircle, CreditCard, Settings, Link as LinkIconLucide, Loader2, LogIn } from 'lucide-react'; 
@@ -44,21 +45,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
-  const [currentUser, setCurrentUser] = React.useState<User | null>(null);
+  const [currentUser, setCurrentUser] = React.useState<MockUser | null>(null); // Use MockUser type
   const [loadingAuth, setLoadingAuth] = React.useState(true);
   const [pageTitle, setPageTitle] = React.useState('Dashboard');
 
   React.useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    // Using mock auth.onAuthStateChanged
+    const unsubscribe = auth.onAuthStateChanged((user) => {
       if (user) {
         setCurrentUser(user);
       } else {
         setCurrentUser(null);
-        // Redirect to login if trying to access a protected route without being logged in.
-        // This can be more granular based on `item.disabled` in nav config.
         const currentNavItem = dashboardNavItems.flatMap(group => group.items).find(item => pathname.startsWith(item.href));
-        if (currentNavItem?.disabled) { // 'disabled' here means requires auth
-            router.push('/auth/login');
+        // In a real app with mock, we might not redirect strictly based on item.disabled for demo purposes,
+        // or we ensure mock user is set by default if we want to bypass login for demo.
+        // For this mock, let's assume if item.disabled is true and no user, we'd redirect.
+        if (currentNavItem?.disabled && !auth.currentUser) { 
+            // console.log("Mock: No user, redirecting to login for protected route:", pathname);
+            // router.push('/auth/login'); // Temporarily disable auto-redirect for full offline demo
         }
       }
       setLoadingAuth(false);
@@ -69,7 +73,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   React.useEffect(() => {
     const currentNavItem = dashboardNavItems
       .flatMap(group => group.items)
-      .find(item => pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/dashboard' && !item.href.includes('#')));
+      .find(item => pathname === item.href || (pathname.startsWith(item.href + '/') && item.href !== '/dashboard' && !item.href.includes('#')));
     if (currentNavItem) {
       setPageTitle(currentNavItem.title);
     } else if (pathname === '/dashboard') {
@@ -79,21 +83,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const handleLogout = async () => {
     try {
-      await signOut(auth);
-      toast({ title: "Logged Out", description: "You have been successfully logged out." });
+      // Using mock auth.signOut
+      await auth.signOut(auth);
+      toast({ title: "Logged Out (Mock)", description: "You have been successfully logged out." });
       setCurrentUser(null); 
       router.push('/auth/login');
     } catch (error) {
-      console.error("Logout error:", error);
-      toast({ title: "Logout Failed", description: (error as Error).message || "Could not log out. Please try again.", variant: "destructive" });
+      console.error("Logout error (Mock):", error);
+      toast({ title: "Logout Failed (Mock)", description: (error as Error).message || "Could not log out. Please try again.", variant: "destructive" });
     }
   };
 
-  if (loadingAuth) {
+  if (loadingAuth && !currentUser && pathname !== '/dashboard') { // Modified condition for demo: only show loader if not on main dashboard and no user yet
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="ml-3 text-muted-foreground">Authenticating...</p>
+        <p className="ml-3 text-muted-foreground">Authenticating (Mock)...</p>
       </div>
     );
   }
@@ -120,10 +125,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         <SidebarMenuButton
                           isActive={pathname === item.href || (pathname.startsWith(item.href + '/') && item.href !== '/dashboard') || (item.href.includes('#') && pathname === item.href.split('#')[0])}
                           tooltip={{content: item.title, side: 'right', align: 'center', className: "ml-2"}}
-                          disabled={item.disabled && !currentUser} 
+                           // For mock, allow access even if item.disabled is true and no user
+                          disabled={false} // item.disabled && !currentUser
                           className={cn(
                             "w-full justify-start",
-                            item.disabled && !currentUser && "cursor-not-allowed opacity-50"
+                            // item.disabled && !currentUser && "cursor-not-allowed opacity-50"
                           )}
                         >
                           <item.icon className="h-5 w-5 shrink-0" />
@@ -139,7 +145,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           ))}
         </SidebarContent>
         <SidebarFooter className="p-2 border-t border-sidebar-border">
-          {/* Example: Quick link to settings or help */}
            <SidebarMenu>
             <SidebarMenuItem>
                <Link href="/dashboard/settings" legacyBehavior passHref>
@@ -168,11 +173,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <ThemeToggle />
             <Button variant="ghost" size="icon" aria-label="Notifications" className="relative rounded-full h-9 w-9">
               <Bell className="h-5 w-5" />
-              {/* Example notification badge */}
-              {/* <span className="absolute top-1 right-1 flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-              </span> */}
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -187,7 +187,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>{currentUser ? (currentUser.displayName || currentUser.email || "My Account") : "Guest"}</DropdownMenuLabel>
-                <DropdownMenuSeparator />
+                <DropdownMenuSeparatorComponent />
                 {currentUser ? (
                   <>
                     <DropdownMenuItem asChild>
@@ -208,7 +208,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         Integrations
                       </Link>
                     </DropdownMenuItem>
-                    <DropdownMenuSeparator />
+                    <DropdownMenuSeparatorComponent />
                     <DropdownMenuItem
                       onClick={handleLogout}
                       className="text-destructive focus:bg-destructive/10 focus:text-destructive cursor-pointer"
@@ -243,4 +243,3 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     </SidebarProvider>
   );
 }
-

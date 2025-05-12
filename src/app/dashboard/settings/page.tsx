@@ -16,8 +16,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { UserCircle, Bell, ShieldCheck, CreditCard, SlidersHorizontal, Link as LinkIcon, AlertTriangle, Trash2, Camera, Loader2, Activity, BarChart, Zap, Users, Settings as SettingsTabIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import React, { useState, useEffect } from "react";
-import { auth } from "@/lib/firebase";
-import { updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential, type User as FirebaseUser } from "firebase/auth";
+// import { updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential, type User as FirebaseUser } from "firebase/auth"; // Firebase original
+import { auth, type MockUser } from "@/lib/firebase"; // Now imports mock auth
 import { useRouter } from 'next/navigation';
 import { apiClient } from "@/lib/apiClient"; 
 import type { UserSettings } from "@/backend/src/models/settings"; 
@@ -42,16 +42,14 @@ const passwordFormSchema = z.object({
     newPassword: z.string().min(8, "New password must be at least 8 characters.").optional().or(z.literal('')),
     confirmNewPassword: z.string().optional().or(z.literal('')),
 }).refine(data => {
-    // Only validate confirmNewPassword if newPassword is provided
     if (data.newPassword && data.newPassword.length > 0) {
         return data.newPassword === data.confirmNewPassword;
     }
-    return true; // If newPassword is not provided, this check passes
+    return true; 
 }, {
     message: "New passwords don't match.",
     path: ["confirmNewPassword"],
 }).refine(data => {
-    // Current password is only required if newPassword is being set
     if (data.newPassword && data.newPassword.length > 0 && (!data.currentPassword || data.currentPassword.length === 0)) {
         return false;
     }
@@ -67,7 +65,7 @@ export default function SettingsPage() {
   const router = useRouter();
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   
-  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [firebaseUser, setFirebaseUser] = useState<MockUser | null>(null); // Use MockUser type
   const [isLoadingGlobal, setIsLoadingGlobal] = useState(true);
   const [settingsError, setSettingsError] = useState<string | null>(null);
 
@@ -82,7 +80,7 @@ export default function SettingsPage() {
     defaultValues: {
       theme: 'system', 
       notifications: { email: true, push: true },
-      timezone: "UTC", // Default to UTC
+      timezone: "UTC", 
     },
   });
   
@@ -100,8 +98,7 @@ export default function SettingsPage() {
 
         setSettingsError(null);
         try {
-          // Backend uses MOCK_USER_ID 'user1' for now. Update when backend auth is ready.
-          const userSettings = await apiClient<UserSettings>(`/settings/user1`); 
+          const userSettings = await apiClient<UserSettings>(`/settings/${user.uid}`); // Use actual user.uid
           preferencesForm.reset({
             theme: userSettings.theme,
             notifications: userSettings.notifications,
@@ -111,7 +108,7 @@ export default function SettingsPage() {
           const errorMsg = (err as Error).message || "Could not load your preferences.";
           setSettingsError(errorMsg + " Using defaults.");
           toast({ title: "Preferences Load Failed", description: errorMsg, variant: "destructive"});
-           preferencesForm.reset({ // Reset to defaults on error
+           preferencesForm.reset({
             theme: 'system',
             notifications: { email: true, push: true },
             timezone: 'UTC',
@@ -121,7 +118,7 @@ export default function SettingsPage() {
         }
 
       } else {
-        toast({ title: "Not Authenticated", description: "Please login to access settings.", variant: "destructive" });
+        toast({ title: "Not Authenticated (Mock)", description: "Please login to access settings.", variant: "destructive" });
         router.push("/auth/login");
         setIsLoadingGlobal(false);
       }
@@ -132,7 +129,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     const currentTheme = preferencesForm.watch('theme');
-    if (typeof window !== 'undefined' && firebaseUser) { // Only run if user is loaded and on client
+    if (typeof window !== 'undefined' && firebaseUser) { 
       if (currentTheme === 'dark') {
         document.documentElement.classList.add('dark');
         localStorage.setItem('theme', 'dark');
@@ -154,16 +151,16 @@ export default function SettingsPage() {
         toast({ title: "Error", description: "User not authenticated.", variant: "destructive"});
         return;
     }
-    profileForm.formState.isSubmitting;
+    profileForm.formState.isSubmitting; // This line doesn't do anything, should be setIsLoading(true) or similar
     try {
-        await updateProfile(firebaseUser, { displayName: values.name, photoURL: avatarPreview || firebaseUser.photoURL });
-        // Refresh firebaseUser state to reflect changes if necessary
-        const updatedUser = auth.currentUser;
-        if (updatedUser) setFirebaseUser(updatedUser); 
-        toast({ title: "Profile Updated", description: "Your Firebase profile information has been saved." });
+        // Using mock auth.updateProfile
+        await auth.updateProfile(firebaseUser, { displayName: values.name, photoURL: avatarPreview || firebaseUser.photoURL });
+        const updatedUser = auth.currentUser; // In mock, this might need manual refresh if not reactive
+        if (updatedUser) setFirebaseUser(updatedUser as MockUser); 
+        toast({ title: "Profile Updated (Mock)", description: "Your profile information has been saved." });
     } catch (error: any) {
-        console.error("Profile update error:", error);
-        toast({ title: "Profile Update Failed", description: error.message, variant: "destructive" });
+        console.error("Profile update error (Mock):", error);
+        toast({ title: "Profile Update Failed (Mock)", description: error.message, variant: "destructive" });
     }
   }
 
@@ -172,10 +169,9 @@ export default function SettingsPage() {
       toast({ title: "Error", description: "User not authenticated.", variant: "destructive"});
       return;
     }
-    preferencesForm.formState.isSubmitting;
+    preferencesForm.formState.isSubmitting; // This line doesn't do anything
     try {
-      // Backend uses MOCK_USER_ID 'user1' for now.
-      await apiClient<UserSettings>(`/settings/user1`, {
+      await apiClient<UserSettings>(`/settings/${firebaseUser.uid}`, { // Use actual firebaseUser.uid
         method: 'PUT',
         body: JSON.stringify(values),
       });
@@ -191,13 +187,11 @@ export default function SettingsPage() {
         toast({ title: "Error", description: "User not found or email not available.", variant: "destructive" });
         return;
     }
-    // If only newPassword is set, but not currentPassword, it's an error (covered by refine)
-    // If neither new nor current password is set, do nothing.
     if (!values.newPassword && !values.currentPassword) {
         toast({ title: "Password Not Changed", description: "No password information provided.", variant: "default"});
         return;
     }
-     if (!values.currentPassword && values.newPassword) { // Should be caught by Zod, but good to double check
+     if (!values.currentPassword && values.newPassword) { 
         passwordForm.setError("currentPassword", {message: "Current password is required to set a new one."})
         return;
     }
@@ -206,30 +200,31 @@ export default function SettingsPage() {
         return;
     }
 
-
-    passwordForm.formState.isSubmitting;
+    passwordForm.formState.isSubmitting; // This line doesn't do anything
     try {
-        const credential = EmailAuthProvider.credential(firebaseUser.email, values.currentPassword!);
-        await reauthenticateWithCredential(firebaseUser, credential);
-        await updatePassword(firebaseUser, values.newPassword!);
-        toast({ title: "Password Updated", description: "Your password has been changed successfully." });
+        // Using mock auth.reauthenticateWithCredential and auth.updatePassword
+        // The mock credential needs to be structured to be checked by mock reauthenticate
+        const mockCredential = { type: "password", password: values.currentPassword! }; // Simplified mock credential
+        await auth.reauthenticateWithCredential(firebaseUser, mockCredential);
+        await auth.updatePassword(firebaseUser, values.newPassword!);
+        toast({ title: "Password Updated (Mock)", description: "Your password has been changed successfully." });
         passwordForm.reset({ currentPassword: "", newPassword: "", confirmNewPassword: "" });
     } catch (error: any) {
-        console.error("Password change error:", error);
-        let userFriendlyMessage = "Password change failed. Please check your current password.";
-        if (error.code === 'auth/wrong-password') {
-            userFriendlyMessage = "Incorrect current password. Please try again.";
-        } else if (error.code === 'auth/too-many-requests') {
-            userFriendlyMessage = "Too many attempts. Please try again later.";
+        console.error("Password change error (Mock):", error);
+        let userFriendlyMessage = "Password change failed. Please check your current password. (Mock)";
+        if (error.message?.includes('auth/wrong-password')) {
+            userFriendlyMessage = "Incorrect current password. Please try again. (Mock)";
+        } else if (error.message?.includes('auth/too-many-requests')) {
+            userFriendlyMessage = "Too many attempts. Please try again later. (Mock)";
         }
-        toast({ title: "Password Change Failed", description: userFriendlyMessage, variant: "destructive" });
+        toast({ title: "Password Change Failed (Mock)", description: userFriendlyMessage, variant: "destructive" });
     }
   }
 
   const handleAvatarChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      if (file.size > 2 * 1024 * 1024) { // 2MB limit
+      if (file.size > 2 * 1024 * 1024) { 
         toast({ title: "Image Too Large", description: "Please select an image smaller than 2MB.", variant: "destructive"});
         return;
       }
@@ -245,18 +240,18 @@ export default function SettingsPage() {
   const handleDeleteAccount = async () => {
     if (firebaseUser) {
         try {
-            // Demo: Sign out and redirect. Real deletion requires backend handling + re-auth.
             console.log("Account deletion requested for user:", firebaseUser.uid);
+            // Using mock auth.signOut for demo purposes
+            await auth.signOut(auth);
             toast({
-                title: "Account Deletion Initiated (Demo)",
-                description: "For this demo, you will be logged out. In a real app, your account and data would be scheduled for deletion.",
+                title: "Account Deletion Initiated (Mock)",
+                description: "You have been logged out. In a real app, your account and data would be scheduled for deletion.",
                 variant: "destructive"
             });
-             await auth.signOut();
-             router.push('/auth/signup'); // Or to a confirmation page
+             router.push('/auth/signup'); 
         } catch (error: any) {
-            console.error("Delete account error:", error);
-            toast({ title: "Account Deletion Failed", description: error.message || "Could not delete account.", variant: "destructive" });
+            console.error("Delete account error (Mock):", error);
+            toast({ title: "Account Deletion Failed (Mock)", description: error.message || "Could not delete account.", variant: "destructive" });
         }
     } else {
          toast({ title: "Error", description: "No user logged in.", variant: "destructive" });
@@ -305,7 +300,7 @@ export default function SettingsPage() {
             <Card className="shadow-md">
                 <CardHeader>
                 <CardTitle>Profile Information</CardTitle>
-                <CardDescription>Update your personal details (Stored in Firebase).</CardDescription>
+                <CardDescription>Update your personal details (Mock Firebase).</CardDescription>
                 </CardHeader>
                 <CardContent>
                 <Form {...profileForm}>
@@ -364,13 +359,13 @@ export default function SettingsPage() {
                 <CardDescription>Customize your WakeSync experience (Stored via Backend).</CardDescription>
                 </CardHeader>
                 <CardContent>
-                {preferencesForm.formState.isSubmitting && !settingsError && ( // Show loader only during active submission
+                {preferencesForm.formState.isSubmitting && !settingsError && ( 
                     <div className="flex items-center justify-center p-6"><Loader2 className="h-6 w-6 animate-spin text-primary" /><span className="ml-2">Loading preferences...</span></div>
                 )}
                 {settingsError && (
                     <div className="text-destructive p-4 border border-destructive bg-destructive/10 rounded-md">{settingsError}</div>
                 )}
-                {!settingsError && ( // Render form if no error or not currently submitting initial load
+                {!settingsError && ( 
                 <Form {...preferencesForm}>
                     <form onSubmit={preferencesForm.handleSubmit(onPreferencesSubmit)} className="space-y-6">
                     <FormField
@@ -409,7 +404,6 @@ export default function SettingsPage() {
                                 </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                                {/* Add more timezones as needed */}
                                 <SelectItem value="UTC">UTC</SelectItem>
                                 <SelectItem value="America/New_York">Eastern Time (US & Canada)</SelectItem>
                                 <SelectItem value="America/Chicago">Central Time (US & Canada)</SelectItem>
@@ -509,8 +503,6 @@ export default function SettingsPage() {
                 <CardDescription>Link WakeSync with other services for an enhanced experience.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                {/* Comment: Add a loading state if integrations are fetched from backend */}
-                {/* Placeholder integrations. In a real app, these would be dynamically listed and managed. */}
                 <Card className="p-4 hover:shadow-lg transition-shadow">
                     <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -619,7 +611,6 @@ export default function SettingsPage() {
                 <div className="mt-8 border-t pt-6">
                     <h3 className="text-lg font-medium">Active Sessions</h3>
                     <p className="text-sm text-muted-foreground mb-3">Review and manage devices logged into your account.</p>
-                    {/* Comment: Active sessions would be dynamically listed here from backend */}
                     <Card className="p-3 space-y-2">
                         <div className="flex items-center justify-between">
                             <div>
@@ -628,7 +619,7 @@ export default function SettingsPage() {
                             </div>
                             <Button variant="link" size="sm" className="text-destructive hover:text-destructive/80" onClick={() => toast({title:"Session Terminated (Demo)"})}>Log out</Button>
                         </div>
-                        <Separator/>
+                        <Separator />
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="font-medium">WakeSync iOS App</p>
@@ -650,7 +641,6 @@ export default function SettingsPage() {
                 <CardDescription>Manage your WakeSync subscription and payment methods.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                    {/* Comment: Billing info would be fetched from a payment provider like Stripe */}
                     <div>
                         <h3 className="text-md font-medium">Current Plan: <span className="text-primary">Pro Monthly</span></h3>
                         <p className="text-sm text-muted-foreground">Renews on August 28, 2024. $9.99/month.</p>
@@ -673,7 +663,6 @@ export default function SettingsPage() {
                     </div>
                     <div className="border-t pt-6">
                         <h3 className="text-md font-medium">Billing History</h3>
-                        {/* Comment: Billing history would be a list of invoices */}
                         <p className="text-sm text-muted-foreground">No invoices yet. Your first invoice will appear here after your first billing cycle.</p>
                          <Button variant="link" size="sm" className="mt-1 px-0" onClick={() => toast({title:"View All Invoices (Demo)"})}>View All Invoices</Button>
                     </div>
@@ -695,7 +684,7 @@ export default function SettingsPage() {
                         <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                         <AlertDialogDescription>
                             This action cannot be undone. This will permanently delete your account
-                            and remove all your data from our servers (this is a demo).
+                            and remove all your data from our servers (this is a mock demo).
                         </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
@@ -714,4 +703,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-

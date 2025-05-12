@@ -1,32 +1,40 @@
+
 // src/lib/apiClient.ts
-// import { auth } from './firebase'; // Will be used when implementing token-based auth
+import { auth, type MockUser } from './firebase'; // Import mock auth and MockUser type
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001/api';
 
-// async function getAuthHeaders() {
-//   const user = auth.currentUser;
-//   if (user) {
-//     try {
-//       const token = await user.getIdToken();
-//       return {
-//         'Authorization': `Bearer ${token}`,
-//         'Content-Type': 'application/json',
-//       };
-//     } catch (error) {
-//       console.error("Error getting ID token:", error);
-//       return { 'Content-Type': 'application/json' }; // Fallback if token fails
-//     }
-//   }
-//   return { 'Content-Type': 'application/json' };
-// }
+async function getAuthHeaders() {
+  const user = auth.currentUser as MockUser | null; // Use the mock auth.currentUser
+  if (user) {
+    try {
+      const token = await user.getIdToken(); // This will call the mock getIdToken
+      return {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'X-User-ID': user.uid, // Optionally send mock user ID
+      };
+    } catch (error) {
+      console.error("Error getting mock ID token:", error);
+      return { 
+        'Content-Type': 'application/json',
+        'X-User-ID': user.uid, // Still send UID if token fails for some reason
+       };
+    }
+  }
+  // For unauthenticated or demo scenarios where backend might use a default user
+  return { 
+    'Content-Type': 'application/json',
+    'X-User-ID': 'user1', // Default mock user ID if no one is logged in
+  };
+}
 
 export async function apiClient<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  // const headers = await getAuthHeaders(); // Uncomment when auth is fully implemented with backend token verification
+  const dynamicHeaders = await getAuthHeaders(); 
   
-  // For now, use simple headers without auth token
   const requestHeaders: HeadersInit = {
-    'Content-Type': 'application/json',
-    ...options.headers,
+    ...dynamicHeaders, // Spread dynamic headers which include Content-Type and potentially Auth/X-User-ID
+    ...options.headers, // Allow overriding or adding more headers from options
   };
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {

@@ -6,8 +6,8 @@ import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+// import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth"; // Firebase original
+import { auth, type MockUser } from "@/lib/firebase"; // Now imports mock auth
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -54,20 +54,26 @@ export default function SignupPage() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
+      // Using mock auth.createUserWithEmailAndPassword
+      const userCredential = await auth.createUserWithEmailAndPassword(auth, values.email, values.password);
       if (userCredential.user && values.name) {
-        await updateProfile(userCredential.user, { displayName: values.name });
+        // Using mock auth.updateProfile
+        await auth.updateProfile(userCredential.user as MockUser, { displayName: values.name });
       }
       toast({
-        title: "Account Created",
+        title: "Account Created (Mock)",
         description: "Welcome to WakeSync! Redirecting to your dashboard...",
       });
       router.push("/dashboard");
     } catch (error: any) {
-      console.error("Signup error:", error);
+      console.error("Signup error (Mock):", error);
+      let userMessage = "Could not create account. Please try again. (Mock)";
+      if (error.message?.includes("auth/email-already-in-use")) {
+        userMessage = "This email address is already in use. (Mock)";
+      }
       toast({
-        title: "Signup Failed",
-        description: error.message || "Could not create account. Please try again.",
+        title: "Signup Failed (Mock)",
+        description: userMessage,
         variant: "destructive",
       });
     } finally {
