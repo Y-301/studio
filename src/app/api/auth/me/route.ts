@@ -1,26 +1,39 @@
 // src/app/api/auth/me/route.ts
 import { NextResponse } from 'next/server';
-import { getCurrentUser } from '@/backend/services/authService'; // Assuming you have a getCurrentUser function
+import { getCurrentUser as getBackendCurrentUser } from '@/backend/services/authService'; // Assuming this exists in the backend service
+import { auth, type User as FirebaseUser } from '@/lib/firebase'; // Import from the conditional firebase lib
 
 export async function GET(request: Request) {
   try {
-    // This function needs to determine the current user based on the request (e.g., from a cookie or token)
-    // You will need to implement getCurrentUser in backend/services/authService.ts
-    const user = await getCurrentUser(request);
+    let user: FirebaseUser | null = null;
 
-    if (!user) {
-      // If getCurrentUser returns null or undefined, the user is not authenticated
-      return NextResponse.json({ message: 'Not authenticated' }, { status: 401 });
+    if (process.env.NEXT_PUBLIC_USE_MOCK_MODE === 'true') {
+      // In mock mode, use the client-side mock auth state
+      user = auth.currentUser as FirebaseUser | null; // auth from lib/firebase will be the mock
+    } else {
+      // In real mode, or if you want to verify against a backend session
+      // (though typically 'me' routes rely on client-side SDK state for speed)
+      // This example assumes you might have a backend service to validate/get current user
+      // For a pure Firebase client-side app, this backend call might not be necessary for 'me'
+      // user = await getBackendCurrentUser(request); // This would hit your Express backend's auth logic
+      // For this setup, let's assume the client-side Firebase SDK is the source of truth for "me"
+       user = auth.currentUser as FirebaseUser | null; // Still use the (real) Firebase SDK's currentUser
     }
 
-    // Return the user data (excluding sensitive info like password hash)
-    // Ensure your User interface/model has a password field, even if optional in some contexts
-    const { password: _, ...userWithoutPassword } = user; // Use object destructuring to omit 'password'
+
+    if (!user) {
+      return NextResponse.json({ message: 'Not authenticated' }, { status: 401 });
+    }
+    
+    // Ensure password is not part of the user object returned
+    // The actual FirebaseUser type from 'firebase/auth' doesn't directly expose password hashes.
+    // The MockUser type might, so we strip it if it exists.
+    const { password, ...userWithoutPassword } = user as any; // Use 'as any' if 'password' isn't on FirebaseUser
+
     return NextResponse.json({ user: userWithoutPassword });
 
   } catch (error: any) {
     console.error('Get current user error:', error);
-    // Return a 500 error for unexpected server issues
     return NextResponse.json({ error: error.message || 'Failed to get user info' }, { status: 500 });
   }
 }

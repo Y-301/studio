@@ -5,8 +5,8 @@ import Link from "next/link";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-// import { sendPasswordResetEmail } from "firebase/auth"; // Firebase original
-import { auth } from "@/lib/firebase"; // Now imports mock auth
+// Use the auth object from the conditional firebase.ts
+import { auth } from "@/lib/firebase"; 
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -43,17 +43,17 @@ export default function ForgotPasswordPage() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
     try {
-      // Using mock auth.sendPasswordResetEmail
-      await auth.sendPasswordResetEmail(auth, values.email);
+      // auth will be mock or real based on USE_MOCK_MODE
+      await auth.sendPasswordResetEmail(auth, values.email); 
       toast({
-        title: "Password Reset Email Sent (Mock)",
-        description: `If an account exists for ${values.email}, a password reset link would have been sent. Please check your inbox (simulation).`,
+        title: `Password Reset Email Sent (${process.env.NEXT_PUBLIC_USE_MOCK_MODE === 'true' ? 'Mock' : 'Real'})`,
+        description: `If an account exists for ${values.email}, a password reset link would have been sent. Please check your inbox.`,
       });
       form.reset();
     } catch (error: any) {
-      console.error("Password reset error (Mock):", error);
+      console.error(`Password reset error (${process.env.NEXT_PUBLIC_USE_MOCK_MODE === 'true' ? 'Mock' : 'Real'}):`, error);
       toast({
-        title: "Error Sending Reset Email (Mock)",
+        title: `Error Sending Reset Email (${process.env.NEXT_PUBLIC_USE_MOCK_MODE === 'true' ? 'Mock' : 'Real'})`,
         description: error.message || "Could not send password reset email. Please try again.",
         variant: "destructive",
       });
@@ -109,3 +109,4 @@ export default function ForgotPasswordPage() {
     </div>
   );
 }
+

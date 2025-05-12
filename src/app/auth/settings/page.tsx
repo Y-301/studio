@@ -13,14 +13,26 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { UserCircle, Bell, ShieldCheck, CreditCard, SlidersHorizontal, Link as LinkIcon, AlertTriangle, Trash2, Camera, Loader2, Activity, BarChart, Zap, Users, Settings as SettingsTabIcon, Separator } from "lucide-react";
+import { UserCircle, Bell, ShieldCheck, CreditCard, SlidersHorizontal, Link as LinkIcon, AlertTriangle, Trash2, Camera, Loader2, Activity, BarChart, Zap, Users, Settings as SettingsTabIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import React, { useState, useEffect } from "react";
 // Import the general User type and specific auth methods from the conditional firebase.ts
 import { auth, db, storage, type User, getEmailProviderCredential, serverTimestamp, Timestamp } from "@/lib/firebase"; 
 import { useRouter } from 'next/navigation';
-// Corrected import path for UserSettingsFromAPI type
-import type { UserSettings as UserSettingsFromAPI } from '@/backend/src/models/settings'; 
+import { apiClient } from "@/lib/apiClient"; 
+// Assuming UserSettings type is defined in a shared location or backend models
+// For demo, let's define a simplified one here if not available from backend models.
+interface UserSettingsFromAPI { // Renamed to avoid conflict if UserSettings is imported from elsewhere
+  userId: string;
+  theme: 'light' | 'dark' | 'system'; 
+  notifications: {
+    email: boolean;
+    push: boolean;
+  };
+  timezone: string;
+  createdAt: any; // Can be Firebase Timestamp or string
+  updatedAt: any; // Can be Firebase Timestamp or string
+}
 
 
 const profileFormSchema = z.object({
@@ -119,8 +131,8 @@ export default function SettingsPage() {
               theme: 'system',
               notifications: { email: true, push: true },
               timezone: 'UTC',
-              createdAt: serverTimestamp(), // Use serverTimestamp
-              updatedAt: serverTimestamp(), // Use serverTimestamp
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
               userId: user.uid,
             };
             preferencesForm.reset(defaultSettings);
@@ -175,20 +187,14 @@ export default function SettingsPage() {
     profileForm.formState.isSubmitting; 
     try {
         let photoURLToUpdate = firebaseUser.photoURL;
-        if (avatarFile && process.env.NEXT_PUBLIC_USE_MOCK_MODE !== 'true') { // Only upload if not in mock mode for storage
+        if (avatarFile) {
           // Upload to Firebase Storage (or mock storage)
           const storageRef = storage.ref(`avatars/${firebaseUser.uid}/${avatarFile.name}`);
-          const uploadTask = await storageRef.put(avatarFile); // This will use the mock if in mock mode
+          const uploadTask = await storageRef.put(avatarFile);
           photoURLToUpdate = await uploadTask.ref.getDownloadURL();
           setAvatarPreview(photoURLToUpdate); // Update preview with final URL
           setAvatarFile(null); // Clear file after upload
-        } else if (avatarFile && process.env.NEXT_PUBLIC_USE_MOCK_MODE === 'true') {
-            // In mock mode with a file selected, use the local preview URL directly
-            photoURLToUpdate = avatarPreview; 
-            setAvatarFile(null);
-            toast({ title: "Avatar Changed (Mock)", description: "Avatar preview updated. In real mode, this would upload."});
         }
-
 
         // Uses conditional firebaseUpdateProfile from lib/firebase.ts
         await auth.updateProfile(auth.currentUser as User, { displayName: values.name, photoURL: photoURLToUpdate });
@@ -216,18 +222,11 @@ export default function SettingsPage() {
     try {
       // Using Firestore example:
       const settingsRef = db.collection("userSettings").doc(firebaseUser.uid);
-      const dataToSave: Partial<UserSettingsFromAPI> & {userId: string, updatedAt: any} = {
+      await settingsRef.set({
         ...values,
         userId: firebaseUser.uid,
         updatedAt: serverTimestamp(), // Use serverTimestamp for real Firebase
-      };
-      // If creating for the first time, also set createdAt
-      const currentSettings = await settingsRef.get();
-      if (!currentSettings.exists()) {
-        (dataToSave as any).createdAt = serverTimestamp();
-      }
-
-      await settingsRef.set(dataToSave, { merge: true }); // Merge to not overwrite createdAt
+      }, { merge: true }); // Merge to not overwrite createdAt
 
       toast({ title: "Preferences Updated", description: "Your app preferences have been saved." });
     } catch (error: any) {
@@ -268,12 +267,9 @@ export default function SettingsPage() {
     } catch (error: any) {
         console.error("Password change error:", error);
         let userFriendlyMessage = error.message || "Password change failed. Please check your current password.";
-         // Check error.code for Firebase specific errors if not in mock mode
-        if (process.env.NEXT_PUBLIC_USE_MOCK_MODE !== 'true' && (error as any).code === 'auth/wrong-password') {
-             userFriendlyMessage = "Incorrect current password. Please try again.";
-        } else if (error.message?.includes('wrong-password') || error.message?.includes('Incorrect current password')) { // Accommodate mock errors
+        if (error.code === 'auth/wrong-password' || error.message?.includes("wrong-password") || error.message?.includes("Incorrect current password")) { // Accommodate mock errors
             userFriendlyMessage = "Incorrect current password. Please try again.";
-        } else if ((error as any).code === 'auth/too-many-requests' || error.message?.includes("too-many-requests")) {
+        } else if (error.code === 'auth/too-many-requests' || error.message?.includes("too-many-requests")) {
             userFriendlyMessage = "Too many attempts. Please try again later.";
         }
         toast({ title: "Password Change Failed", description: userFriendlyMessage, variant: "destructive" });
@@ -302,20 +298,16 @@ export default function SettingsPage() {
             console.log("Account deletion requested for user:", firebaseUser.uid);
             // In a real app, you might re-authenticate before deletion for security.
             // For mock:
+            // await auth.currentUser.delete(); // If delete method is on mock user
+            // Or just sign out and remove from mock store
             const userEmailToDelete = firebaseUser.email;
             await auth.signOut(auth); // This will call the mock signOut
 
-            if (process.env.NEXT_PUBLIC_USE_MOCK_MODE === 'true' && userEmailToDelete) {
-                 // Accessing mockUserStore might not be possible from here if it's not exported.
-                 // The mockAuth.signOut already sets mockCurrentUserInternal to null.
-                 // Further cleanup of mockUserStore would need that store to be accessible or handled within the mockAuth logic.
-                 console.log(`[Mock] User ${userEmailToDelete} logged out. Store cleanup would happen in a real backend or more complex mock.`);
-            } else if (process.env.NEXT_PUBLIC_USE_MOCK_MODE !== 'true' && auth.currentUser) {
-                // Real Firebase: await auth.currentUser.delete(); 
-                // For demo, we'll just sign out.
-                console.log("[Real Firebase] Actual account deletion would happen here. For demo, only signing out.");
+            // If using mockUserStore directly for deletion (depends on mockAuthSingleton internal implementation)
+            if (userEmailToDelete && mockUserStore[userEmailToDelete]) {
+                 delete mockUserStore[userEmailToDelete];
+                 console.log(`[MockAuth] User ${userEmailToDelete} removed from mockUserStore.`);
             }
-
 
             toast({
                 title: "Account Deletion Initiated",

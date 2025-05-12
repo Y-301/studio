@@ -5,10 +5,10 @@ import { Button } from "@/components/ui/button";
 import { BarChart, ListChecks, Settings, Smartphone, Sunrise, Zap, UserCircle, Loader2, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
-import { auth } from "@/lib/firebase";
-import type { User as FirebaseUser } from "firebase/auth"; // Renamed to avoid conflict
+// Use the auth object and User type from the conditional firebase.ts
+import { auth, type User } from "@/lib/firebase"; 
 import { apiClient } from "@/lib/apiClient";
-import { useToast } from "@/hooks/use-toast"; // Import useToast
+import { useToast } from "@/hooks/use-toast"; 
 
 interface DashboardSummary {
   activeDevices: number;
@@ -20,45 +20,52 @@ interface DashboardSummary {
 }
 
 export default function DashboardPage() {
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null); // Use the general User type
   const [greetingName, setGreetingName] = useState<string>("Guest");
   const [summaryData, setSummaryData] = useState<DashboardSummary | null>(null);
   const [isLoadingSummary, setIsLoadingSummary] = useState(true);
   const [summaryError, setSummaryError] = useState<string | null>(null);
-  const { toast } = useToast(); // Initialize toast
+  const { toast } = useToast();
 
   useEffect(() => {
+    // auth will be mock or real based on USE_MOCK_MODE
     const unsubscribe = auth.onAuthStateChanged((user) => {
-      setCurrentUser(user);
+      setCurrentUser(user as User | null); // Cast if necessary
       if (user) {
         setGreetingName(user.displayName || user.email || "User");
-        fetchDashboardSummary(user.uid); // Pass user UID or a mock ID
+        // Use user.uid for real Firebase, or a mock ID if in mock mode and uid isn't standard
+        fetchDashboardSummary(user.uid || 'user1'); // Fallback to 'user1' if uid is somehow null in mock
       } else {
         setGreetingName("Guest");
         setIsLoadingSummary(false); 
-        setSummaryData(null);
+        setSummaryData({ // Provide some default/guest view data if not logged in
+            activeDevices: 0, 
+            totalDevices: 0,
+            activeRoutines: 0, 
+            totalRoutines: 0,
+            nextWakeUpTime: "N/A (Login to see)",
+            lastRoutineRun: "N/A (Login to see)",
+        });
       }
     });
     return () => unsubscribe();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchDashboardSummary = async (userId: string) => {
     setIsLoadingSummary(true);
     setSummaryError(null);
     try {
-      // Backend controller uses a default userId 'user1' if not properly authenticated or if no userId query param is passed.
-      // For a real multi-user setup, ensure the backend uses authenticated user's ID.
       const data = await apiClient<DashboardSummary>(`/dashboard/summary?userId=${userId}`); 
       setSummaryData(data);
     } catch (err) {
       const errorMessage = (err as Error).message || "Failed to load dashboard summary.";
       setSummaryError(errorMessage + " Using placeholder data.");
-      toast({ // Toast for error
+      toast({
         title: "Summary Load Failed",
         description: errorMessage,
         variant: "destructive",
       });
-      // Fallback to mock data for demo if API fails
       setSummaryData({
         activeDevices: 5, 
         totalDevices: 7,
@@ -204,7 +211,6 @@ export default function DashboardPage() {
             <p className="text-sm">💡 Try linking your calendar for even smarter routine suggestions!</p>
             <p className="text-sm">☀️ Explore different light intensities in the Wake Up Simulation.</p>
             <p className="text-sm">📊 Check the Analytics page to understand your sleep patterns better.</p>
-            {/* Adding a placeholder for AI integration */}
             <p className="text-sm text-primary">🚀 <span className="font-semibold">Coming Soon:</span> Predictive analytics for energy saving and routine optimization!</p>
             <Button variant="secondary" className="mt-4" asChild disabled={!currentUser}>
                 <Link href={currentUser ? "/dashboard/settings" : "#"}>

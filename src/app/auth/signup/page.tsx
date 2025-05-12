@@ -6,8 +6,8 @@ import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-// import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth"; // Firebase original
-import { auth, type MockUser } from "@/lib/firebase"; // Now imports mock auth
+// Use the auth object and User type from the conditional firebase.ts
+import { auth, type User } from "@/lib/firebase"; 
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -54,25 +54,25 @@ export default function SignupPage() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
     try {
-      // Using mock auth.createUserWithEmailAndPassword
+      // auth will be mock or real based on USE_MOCK_MODE
       const userCredential = await auth.createUserWithEmailAndPassword(auth, values.email, values.password);
       if (userCredential.user && values.name) {
-        // Using mock auth.updateProfile
-        await auth.updateProfile(userCredential.user as MockUser, { displayName: values.name });
+        // The user object from createUserWithEmailAndPassword should be compatible with updateProfile
+        await auth.updateProfile(userCredential.user as User, { displayName: values.name });
       }
       toast({
-        title: "Account Created (Mock)",
+        title: `Account Created (${process.env.NEXT_PUBLIC_USE_MOCK_MODE === 'true' ? 'Mock' : 'Real'})`,
         description: "Welcome to WakeSync! Redirecting to your dashboard...",
       });
       router.push("/dashboard");
     } catch (error: any) {
-      console.error("Signup error (Mock):", error);
-      let userMessage = "Could not create account. Please try again. (Mock)";
-      if (error.message?.includes("auth/email-already-in-use")) {
-        userMessage = "This email address is already in use. (Mock)";
+      console.error(`Signup error (${process.env.NEXT_PUBLIC_USE_MOCK_MODE === 'true' ? 'Mock' : 'Real'}):`, error);
+      let userMessage = `Could not create account. Please try again. (${process.env.NEXT_PUBLIC_USE_MOCK_MODE === 'true' ? 'Mock' : 'Real'})`;
+      if (error.code === 'auth/email-already-in-use' || error.message?.includes("auth/email-already-in-use")) {
+        userMessage = `This email address is already in use. (${process.env.NEXT_PUBLIC_USE_MOCK_MODE === 'true' ? 'Mock' : 'Real'})`;
       }
       toast({
-        title: "Signup Failed (Mock)",
+        title: `Signup Failed (${process.env.NEXT_PUBLIC_USE_MOCK_MODE === 'true' ? 'Mock' : 'Real'})`,
         description: userMessage,
         variant: "destructive",
       });
@@ -167,3 +167,4 @@ export default function SignupPage() {
     </div>
   );
 }
+

@@ -4,8 +4,8 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-// import { onAuthStateChanged, signOut, User } from 'firebase/auth'; // Firebase original
-import { auth, type MockUser } from '@/lib/firebase'; // Now imports mock auth
+// Import the general User type and auth from the conditional firebase.ts
+import { auth, type User } from '@/lib/firebase'; 
 import {
   SidebarProvider,
   Sidebar,
@@ -20,7 +20,7 @@ import {
   SidebarGroup,
   SidebarGroupLabel,
   SidebarGroupContent,
-  SidebarSeparator, // Added SidebarSeparator import
+  SidebarSeparator,
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -29,7 +29,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator as DropdownMenuSeparatorComponent, // Renamed to avoid conflict
+  DropdownMenuSeparator as DropdownMenuSeparatorComponent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Bell, LogOut, UserCircle, CreditCard, Settings, Link as LinkIconLucide, Loader2, LogIn } from 'lucide-react'; 
@@ -45,24 +45,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
-  const [currentUser, setCurrentUser] = React.useState<MockUser | null>(null); // Use MockUser type
+  const [currentUser, setCurrentUser] = React.useState<User | null>(null); // Use the general User type
   const [loadingAuth, setLoadingAuth] = React.useState(true);
   const [pageTitle, setPageTitle] = React.useState('Dashboard');
 
   React.useEffect(() => {
-    // Using mock auth.onAuthStateChanged
+    // auth will be mock or real based on USE_MOCK_MODE
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (user) {
-        setCurrentUser(user);
+        setCurrentUser(user as User); // Cast if necessary, though User type should cover both
       } else {
         setCurrentUser(null);
-        const currentNavItem = dashboardNavItems.flatMap(group => group.items).find(item => pathname.startsWith(item.href));
-        // In a real app with mock, we might not redirect strictly based on item.disabled for demo purposes,
-        // or we ensure mock user is set by default if we want to bypass login for demo.
-        // For this mock, let's assume if item.disabled is true and no user, we'd redirect.
-        if (currentNavItem?.disabled && !auth.currentUser) { 
-            // console.log("Mock: No user, redirecting to login for protected route:", pathname);
-            // router.push('/auth/login'); // Temporarily disable auto-redirect for full offline demo
+        // For demo with Try Demo Dashboard, we don't strictly redirect if not logged in for dashboard pages.
+        // This allows exploring the UI. Protected actions within pages should still check auth status.
+        const isAuthRequiredPage = !['/dashboard', '/auth/login', '/auth/signup', '/auth/forgot-password'].includes(pathname) && 
+                                   !pathname.startsWith('/features') && !pathname.startsWith('/learn-more') && !pathname.startsWith('/pricing');
+        
+        if (isAuthRequiredPage && process.env.NEXT_PUBLIC_USE_MOCK_MODE !== 'true') { // Only enforce for real mode or if explicitly desired for mock
+             console.log("User not authenticated, redirecting to login for:", pathname);
+             router.push('/auth/login');
+        } else if (isAuthRequiredPage && process.env.NEXT_PUBLIC_USE_MOCK_MODE === 'true'){
+            console.log("Mock mode: User not authenticated, but allowing access to", pathname, "for demo purposes.");
         }
       }
       setLoadingAuth(false);
@@ -83,22 +86,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const handleLogout = async () => {
     try {
-      // Using mock auth.signOut
-      await auth.signOut(auth);
-      toast({ title: "Logged Out (Mock)", description: "You have been successfully logged out." });
+      await auth.signOut(auth); // auth will be mock or real
+      toast({ title: "Logged Out", description: "You have been successfully logged out." });
       setCurrentUser(null); 
       router.push('/auth/login');
     } catch (error) {
-      console.error("Logout error (Mock):", error);
-      toast({ title: "Logout Failed (Mock)", description: (error as Error).message || "Could not log out. Please try again.", variant: "destructive" });
+      console.error("Logout error:", error);
+      toast({ title: "Logout Failed", description: (error as Error).message || "Could not log out. Please try again.", variant: "destructive" });
     }
   };
 
-  if (loadingAuth && !currentUser && pathname !== '/dashboard') { // Modified condition for demo: only show loader if not on main dashboard and no user yet
+  // Show loading state only if not in mock mode or if explicitly checking auth for a protected page
+  const shouldShowLoader = loadingAuth && !currentUser && 
+                           !['/dashboard'].includes(pathname) && // Allow dashboard to load even if not logged in for demo
+                           (process.env.NEXT_PUBLIC_USE_MOCK_MODE !== 'true'); 
+
+  if (shouldShowLoader) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="ml-3 text-muted-foreground">Authenticating (Mock)...</p>
+        <p className="ml-3 text-muted-foreground">Authenticating...</p>
       </div>
     );
   }
@@ -125,11 +132,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         <SidebarMenuButton
                           isActive={pathname === item.href || (pathname.startsWith(item.href + '/') && item.href !== '/dashboard') || (item.href.includes('#') && pathname === item.href.split('#')[0])}
                           tooltip={{content: item.title, side: 'right', align: 'center', className: "ml-2"}}
-                           // For mock, allow access even if item.disabled is true and no user
-                          disabled={false} // item.disabled && !currentUser
+                          // In mock mode, or if current user exists, item is enabled unless explicitly item.disabled
+                          disabled={item.disabled && !currentUser && process.env.NEXT_PUBLIC_USE_MOCK_MODE !== 'true'} 
                           className={cn(
                             "w-full justify-start",
-                            // item.disabled && !currentUser && "cursor-not-allowed opacity-50"
+                            item.disabled && !currentUser && process.env.NEXT_PUBLIC_USE_MOCK_MODE !== 'true' && "cursor-not-allowed opacity-50"
                           )}
                         >
                           <item.icon className="h-5 w-5 shrink-0" />
@@ -152,6 +159,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   isActive={pathname.startsWith('/dashboard/settings')}
                   tooltip={{content: "Settings", side: 'right', align: 'center', className: "ml-2"}}
                   className="w-full justify-start"
+                  disabled={!currentUser && process.env.NEXT_PUBLIC_USE_MOCK_MODE !== 'true'}
                 >
                   <Settings className="h-5 w-5 shrink-0" />
                   <span className="truncate">Settings</span>
@@ -186,7 +194,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>{currentUser ? (currentUser.displayName || currentUser.email || "My Account") : "Guest"}</DropdownMenuLabel>
+                <DropdownMenuLabel>{currentUser ? (currentUser.displayName || currentUser.email || "My Account") : "Guest Account"}</DropdownMenuLabel>
                 <DropdownMenuSeparatorComponent />
                 {currentUser ? (
                   <>
@@ -243,3 +251,4 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     </SidebarProvider>
   );
 }
+
