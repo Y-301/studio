@@ -1,11 +1,22 @@
 // src/app/api/auth/signup/route.ts
 import { NextResponse } from 'next/server';
-import { signupUser as backendSignupUser } from '@/backend/services/authService';
-import { auth as firebaseAuth, firebaseCreateUserWithEmailAndPassword, type User } from '@/lib/firebase'; // Use firebase.ts
+import { signupUser as backendSignupUser } from '../../../../../backend/src/services/authService'; // Adjusted path
+import {
+  auth,
+  firebaseCreateUserWithEmailAndPassword, // Use this for real Firebase
+  firebaseUpdateProfile,                 // Use this for real Firebase
+  type User,
+  mockAuthSingleton // For type casting the mock
+} from '@/lib/firebase';
+
+function firebaseConfigIsValid() {
+    const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
+    return apiKey && !apiKey.startsWith("YOUR_") && !apiKey.startsWith("PLACEHOLDER") && !apiKey.startsWith("MOCK_") && apiKey.length > 10;
+}
 
 export async function POST(request: Request) {
   try {
-    const { email, password, name } = await request.json(); // Assuming 'name' might be passed
+    const { email, password, name } = await request.json();
 
     if (!email || !password) {
         return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
@@ -20,21 +31,24 @@ export async function POST(request: Request) {
     let newUserResponse: User | any | null = null;
 
     if (process.env.NEXT_PUBLIC_USE_MOCK_MODE === 'true') {
-        const { user } = await firebaseAuth.createUserWithEmailAndPassword(firebaseAuth, email, password);
-        if (name && user && firebaseAuth.updateProfile) { // Check if updateProfile exists on mock
-             await firebaseAuth.updateProfile(user as User, { displayName: name });
+        // Use mock auth methods
+        const { user } = await (auth as typeof mockAuthSingleton).createUserWithEmailAndPassword(auth as any, email, password);
+        if (name && user && (auth as typeof mockAuthSingleton).updateProfile) {
+             await (auth as typeof mockAuthSingleton).updateProfile(user as User, { displayName: name });
         }
-        newUserResponse = firebaseAuth.currentUser; // Get potentially updated user
-    } else if (process.env.NEXT_PUBLIC_USE_MOCK_MODE === 'false' && firebaseConfigIsValid()) {
-        const userCredential = await firebaseCreateUserWithEmailAndPassword(firebaseAuth as any, email, password);
-        if (name && userCredential.user && firebaseAuth.updateProfile) {
-            await firebaseAuth.updateProfile(userCredential.user, { displayName: name });
+        newUserResponse = (auth as typeof mockAuthSingleton).currentUser;
+    } else if (firebaseConfigIsValid()) {
+        // Use real Firebase modular functions
+        const userCredential = await firebaseCreateUserWithEmailAndPassword(auth, email, password);
+        if (name && userCredential.user) {
+            await firebaseUpdateProfile(userCredential.user, { displayName: name });
         }
         newUserResponse = userCredential.user;
-    }
-     else {
-      console.warn("Attempting signup via backend service. This might be due to invalid client Firebase config or intentional backend auth flow.");
-      newUserResponse = await backendSignupUser(email, password, name); // Adapt backendSignupUser if it takes name
+    } else {
+      // Fallback to backend service if mocks are off and Firebase client config is bad,
+      // or if you prefer a backend-driven auth flow.
+      console.warn("Attempting signup via backend service due to invalid client Firebase config or intentional backend auth flow.");
+      newUserResponse = await backendSignupUser(email, password); // Adapt backendSignupUser if it takes name
     }
     
     if (!newUserResponse) {
@@ -62,19 +76,19 @@ export async function POST(request: Request) {
                 statusCode = 400;
                 break;
             // Add other Firebase error codes as needed
+            case 'auth/api-key-not-valid':
+                 errorMessage = 'Firebase API Key is not valid. Please check your configuration.';
+                 statusCode = 500; // Internal server error or configuration error
+                 break;
         }
     }
     // If it's a mock error message that contains auth/ specific strings
     if (errorMessage.includes('auth/email-already-in-use')) {
-        errorMessage = 'This email address is already in use. (Mock)';
+        errorMessage = `This email address is already in use. (${process.env.NEXT_PUBLIC_USE_MOCK_MODE === 'true' ? 'Mock' : 'Real'})`;
         statusCode = 409;
     }
 
 
     return NextResponse.json({ error: errorMessage }, { status: statusCode });
   }
-}
-
-function firebaseConfigIsValid() {
-    return process.env.NEXT_PUBLIC_FIREBASE_API_KEY && !process.env.NEXT_PUBLIC_FIREBASE_API_KEY.startsWith("YOUR_");
 }
