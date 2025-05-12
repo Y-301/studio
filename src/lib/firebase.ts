@@ -308,10 +308,12 @@ const explicitMockModeEnv = process.env.NEXT_PUBLIC_USE_MOCK_MODE;
 let autoDetectedMockMode: boolean;
 
 const firebaseApiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
-if (firebaseApiKey && !firebaseApiKey.includes("YOUR_") && !firebaseApiKey.includes("PLACEHOLDER") && firebaseApiKey.length > 10) {
-  autoDetectedMockMode = false; // Valid API key found, assume real mode
-} else {
+const isApiKeyPlaceholder = (key?: string) => !key || key.includes("YOUR_") || key.includes("PLACEHOLDER") || key.includes("MOCK_") || key.length < 10;
+
+if (isApiKeyPlaceholder(firebaseApiKey)) {
   autoDetectedMockMode = true;  // API key is missing or a placeholder, assume mock mode
+} else {
+  autoDetectedMockMode = false; // Valid API key found, assume real mode
 }
 
 const USE_MOCK_MODE =
@@ -321,15 +323,15 @@ const USE_MOCK_MODE =
 
 if (USE_MOCK_MODE) {
   if (explicitMockModeEnv === 'true') {
-    console.log("WakeSync is using MOCK Firebase services (explicitly set by NEXT_PUBLIC_USE_MOCK_MODE=true in .env).");
-  } else { // explicitMockModeEnv is undefined or not 'false'
-    console.log("WakeSync is using MOCK Firebase services (auto-detected due to missing/placeholder Firebase API Key in .env. Set NEXT_PUBLIC_USE_MOCK_MODE=false to force real Firebase).");
+    console.info("WakeSync: Using MOCK Firebase services (explicitly set by NEXT_PUBLIC_USE_MOCK_MODE=true).");
+  } else {
+    console.info("WakeSync: Using MOCK Firebase services (auto-detected due to missing/placeholder Firebase API Key). For REAL Firebase, provide valid credentials in .env and ensure NEXT_PUBLIC_USE_MOCK_MODE is not 'true'.");
   }
-} else { // USE_MOCK_MODE is false
+} else {
    if (explicitMockModeEnv === 'false') {
-     console.log("WakeSync is using REAL Firebase services (explicitly set by NEXT_PUBLIC_USE_MOCK_MODE=false in .env).");
-   } else { // explicitMockModeEnv is undefined or not 'true', and autoDetectedMockMode was false
-     console.log("WakeSync is using REAL Firebase services (auto-detected based on valid Firebase API Key in .env. Set NEXT_PUBLIC_USE_MOCK_MODE=true to force mock).");
+     console.info("WakeSync: Using REAL Firebase services (explicitly set by NEXT_PUBLIC_USE_MOCK_MODE=false).");
+   } else {
+     console.info("WakeSync: Using REAL Firebase services (auto-detected based on valid Firebase API Key). To force MOCK mode, set NEXT_PUBLIC_USE_MOCK_MODE=true in .env.");
    }
 }
 
@@ -350,17 +352,16 @@ if (USE_MOCK_MODE) {
   serverTimestamp = mockDbSingleton.serverTimestamp as typeof mockDbSingleton.serverTimestamp;
 } else {
   if (!getApps().length) {
-    if (!firebaseConfig.apiKey || firebaseConfig.apiKey.startsWith("YOUR_")) {
-      console.error("CRITICAL: Firebase API Key is not configured. Real Firebase will not work. Check your .env file.");
-      // Fallback to mock if real config is invalid to prevent app crash
+    if (isApiKeyPlaceholder(firebaseConfig.apiKey)) {
+      console.error("CRITICAL: Firebase API Key is not configured correctly for REAL mode. Defaulting to MOCK services to prevent app crash. Check your .env file.");
       auth = mockAuthSingleton;
       db = mockDbSingleton;
       storage = mockStorageSingleton;
       Timestamp = mockDbSingleton.Timestamp as typeof mockDbSingleton.Timestamp;
       serverTimestamp = mockDbSingleton.serverTimestamp as typeof mockDbSingleton.serverTimestamp;
       app = { name: "[mock Firebase app - FALLBACK]" } as FirebaseApp;
-      if (typeof window !== 'undefined') { // Avoid alert in server-side rendering
-        alert("Firebase is not configured correctly. The app is running in a limited mock mode. Please check browser console and .env file.");
+      if (typeof window !== 'undefined') { 
+        alert("WakeSync Firebase is not configured correctly for REAL mode. The app is running with MOCK services. Please check browser console and .env file for API key issues.");
       }
     } else {
       app = initializeApp(firebaseConfig);
@@ -409,8 +410,8 @@ export {
 
 if (!USE_MOCK_MODE) {
     const placeholderWarning = (key: string, value?: string) => {
-        if (!value || value.includes("YOUR_") || value.includes("PLACEHOLDER") || value.length < 10) {
-            console.warn(`Firebase config is using a placeholder or potentially invalid value for ${key}. ` + "Ensure .env file has your Firebase project credentials for REAL mode to work correctly.");
+        if (isApiKeyPlaceholder(value)) {
+            console.warn(`WakeSync: Firebase config might be using a placeholder or invalid value for ${key}. Ensure .env file has valid Firebase project credentials for REAL mode.`);
             return true;
         }
         return false;
@@ -419,10 +420,10 @@ if (!USE_MOCK_MODE) {
     placeholderWarning("NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN", process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN);
     placeholderWarning("NEXT_PUBLIC_FIREBASE_PROJECT_ID", process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID);
 
-    if (!process.env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY.includes("YOUR_") || process.env.GOOGLE_API_KEY.includes("PLACEHOLDER")) {
-        console.warn("Genkit might be using a placeholder value for GOOGLE_API_KEY in .env. " + "Ensure GOOGLE_API_KEY is correctly set for REAL mode if Genkit relies on it.");
+    if (isApiKeyPlaceholder(process.env.GOOGLE_API_KEY)) {
+        console.warn("WakeSync: Genkit GOOGLE_API_KEY in .env might be a placeholder. AI features may not work in REAL mode without a valid key.");
     }
-} else {
+} else { // Populate mock store with more users if needed for testing
     if (!mockUserStore["another@example.com"]) {
         mockUserStore["another@example.com"] = {
             password: "password",
@@ -437,10 +438,10 @@ if (!USE_MOCK_MODE) {
             }
         }
     }
-     if (!mockCurrentUserInternal && mockUserStore["demo@example.com"]) {
-        // Automatically "log in" the demo user if no one is logged in, for easier demoing
-        // mockCurrentUserInternal = mockUserStore["demo@example.com"].profile;
-        // console.log("[MockAuth] Auto-logged in demo@example.com for convenience.");
-        // notifyMockAuthStateChanged(); // This would trigger auth state change on initial load
-    }
+    // Example: Auto-login demo user for easier development in mock mode
+    // if (!mockCurrentUserInternal && mockUserStore["demo@example.com"]) {
+    //     mockCurrentUserInternal = mockUserStore["demo@example.com"].profile;
+    //     console.info("[MockAuth] Auto-logged in demo@example.com for convenience.");
+    //     // notifyMockAuthStateChanged(); // This might be too early, let onAuthStateChanged handle initial call
+    // }
 }
