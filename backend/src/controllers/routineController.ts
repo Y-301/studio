@@ -4,10 +4,10 @@ import * as routineService from '../services/routineService';
 import { log } from '../services/logService';
 import type { Routine } from '../models/routine';
 
-const MOCK_USER_ID = 'user1'; // TODO: Replace with actual user ID from auth middleware
+const DEFAULT_MOCK_USER_ID_IF_NO_AUTH = 'user1';
 
 export const getAllRoutines = async (req: Request, res: Response) => {
-  const userId = MOCK_USER_ID;
+  const userId = (req.headers['x-user-id'] as string) || DEFAULT_MOCK_USER_ID_IF_NO_AUTH;
   try {
     const routines = await routineService.getRoutinesByUserId(userId);
     res.status(200).json(routines);
@@ -19,7 +19,7 @@ export const getAllRoutines = async (req: Request, res: Response) => {
 
 export const getRoutineById = async (req: Request, res: Response) => {
   const { routineId } = req.params;
-  const userId = MOCK_USER_ID;
+  const userId = (req.headers['x-user-id'] as string) || DEFAULT_MOCK_USER_ID_IF_NO_AUTH;
   try {
     const routine = await routineService.getRoutineByIdAndUserId(routineId, userId);
     if (!routine) {
@@ -33,10 +33,13 @@ export const getRoutineById = async (req: Request, res: Response) => {
 };
 
 export const createRoutine = async (req: Request, res: Response) => {
-  const userId = MOCK_USER_ID;
-  const routineData: Omit<Routine, 'id' | 'userId' | 'createdAt' | 'updatedAt'> = req.body;
+  const userId = (req.headers['x-user-id'] as string) || DEFAULT_MOCK_USER_ID_IF_NO_AUTH;
+  // Backend's Routine model might differ slightly from frontend's RoutineFormData
+  // Adjust mapping as needed or ensure types are compatible
+  const routineData = req.body as Omit<Routine, 'id' | 'userId' | 'createdAt' | 'updatedAt'>;
 
-  if (!routineData.name || !routineData.triggerType || !routineData.actions || routineData.actions.length === 0) {
+
+  if (!routineData.name || !routineData.trigger?.type || !routineData.actions || routineData.actions.length === 0) {
     log('warn', 'Missing required fields for new routine.', userId, { component: 'RoutineController', body: req.body });
     return res.status(400).json({ message: 'Routine name, trigger type, and at least one action are required.' });
   }
@@ -52,8 +55,8 @@ export const createRoutine = async (req: Request, res: Response) => {
 
 export const updateRoutine = async (req: Request, res: Response) => {
   const { routineId } = req.params;
-  const userId = MOCK_USER_ID;
-  const updateData: Partial<Omit<Routine, 'id' | 'userId' | 'createdAt' | 'updatedAt'>> = req.body;
+  const userId = (req.headers['x-user-id'] as string) || DEFAULT_MOCK_USER_ID_IF_NO_AUTH;
+  const updateData = req.body as Partial<Omit<Routine, 'id' | 'userId' | 'createdAt' | 'updatedAt'>>;
 
   if (Object.keys(updateData).length === 0) {
     return res.status(400).json({ message: 'No update data provided.' });
@@ -73,7 +76,7 @@ export const updateRoutine = async (req: Request, res: Response) => {
 
 export const deleteRoutine = async (req: Request, res: Response) => {
   const { routineId } = req.params;
-  const userId = MOCK_USER_ID;
+  const userId = (req.headers['x-user-id'] as string) || DEFAULT_MOCK_USER_ID_IF_NO_AUTH;
   try {
     const success = await routineService.deleteRoutineByIdAndUserId(routineId, userId);
     if (!success) {
@@ -88,7 +91,7 @@ export const deleteRoutine = async (req: Request, res: Response) => {
 
 export const triggerRoutine = async (req: Request, res: Response) => {
   const { routineId } = req.params;
-  const userId = MOCK_USER_ID;
+  const userId = (req.headers['x-user-id'] as string) || DEFAULT_MOCK_USER_ID_IF_NO_AUTH;
   try {
     const success = await routineService.triggerRoutineManually(routineId, userId);
     if (!success) {

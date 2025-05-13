@@ -1,7 +1,7 @@
 // src/app/api/analytics/summary/route.ts
 import { NextResponse } from 'next/server';
-import { getUserAnalyticsSummary } from '@/backend/services/analyticsService'; // Assuming this exists
-import { getCurrentUser } from '@/backend/services/authService'; // To get the current user
+import { getUserAnalyticsSummary } from '@/backend/services/analyticsService'; 
+import { getCurrentUser } from '@/backend/services/authService'; 
 
 // GET /api/analytics/summary - Get a summary of analytics data for the current user
 export async function GET(request: Request) {
@@ -11,19 +11,17 @@ export async function GET(request: Request) {
       return NextResponse.json({ message: 'Not authenticated' }, { status: 401 });
     }
 
-    // Optional: Read query parameters for date range or type of summary
     const { searchParams } = new URL(request.url);
-    const period = searchParams.get('period') || 'week'; // Default to weekly summary
-    // const startDate = searchParams.get('startDate');
-    // const endDate = searchParams.get('endDate');
+    const period = searchParams.get('period') || 'week'; 
 
-    // TODO: Add validation for query parameters (e.g., valid period values)
-     if (!['day', 'week', 'month', 'year'].includes(period)) {
-         return NextResponse.json({ error: 'Invalid period parameter' }, { status: 400 });
-     }
+    const validPeriods = ['day', 'week', 'month', 'year'];
+    if (!validPeriods.includes(period)) {
+        return NextResponse.json({ error: 'Invalid period parameter. Must be one of: ' + validPeriods.join(', ') }, { status: 400 });
+    }
 
-
-    const summary = await getUserAnalyticsSummary(user.id, period /*, startDate, endDate */); // Your function to get the summary
+    // The backend service `getUserAnalyticsSummary` currently uses mock data.
+    // In a real application, it would fetch and process data from a database based on userId and period.
+    const summary = await getUserAnalyticsSummary(user.id, period);
 
     return NextResponse.json({ summary });
 

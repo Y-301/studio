@@ -1,6 +1,6 @@
 // src/app/api/logs/submit/route.ts
 import { NextResponse } from 'next/server';
-import { submitLogEntry, LogEntry } from '@/backend/services/logService'; // Assuming this exists
+import { submitLogEntry, type LogEntry, type LogLevel } from '@/backend/services/logService'; 
 
 // POST /api/logs/submit - Receive and submit a log entry
 export async function POST(request: Request) {
@@ -10,36 +10,38 @@ export async function POST(request: Request) {
     // involve an API key or other form of credential if necessary.
     // Implement authorization here if needed.
 
-    const logEntry: LogEntry = await request.json();
-    console.log('Received log entry:', logEntry);
-
-    // TODO: Add input validation for incoming logEntry
-    // Ensure required fields like level, message, timestamp are present
-    // Validate the format and type of fields
-
-     // Convert timestamp string to Date object if needed
-     if (typeof logEntry.timestamp === 'string') {
-        logEntry.timestamp = new Date(logEntry.timestamp);
-     }
+    const rawLogEntry: Partial<LogEntry> = await request.json();
+    console.log('Received log entry:', rawLogEntry);
 
      // Basic validation example
-     if (!logEntry.level || !logEntry.message || !logEntry.timestamp) {
-         return NextResponse.json({ error: 'Missing required log entry data' }, { status: 400 });
+     if (!rawLogEntry.level || !rawLogEntry.message) {
+         return NextResponse.json({ error: 'Missing required log entry data: level and message are required.' }, { status: 400 });
      }
-      // Validate log level against your expected levels
-      // if (!['debug', 'info', 'warn', 'error', 'fatal'].includes(logEntry.level)) {
-      //     return NextResponse.json({ error: 'Invalid log level' }, { status: 400 });
-      // }
+      const validLevels: LogLevel[] = ['debug', 'info', 'warn', 'error', 'success'];
+      if (!validLevels.includes(rawLogEntry.level)) {
+          return NextResponse.json({ error: `Invalid log level. Must be one of: ${validLevels.join(', ')}` }, { status: 400 });
+      }
 
+     // Construct the final log entry, ensuring server-set timestamp if not provided or to override
+     const logEntryToSubmit: Omit<LogEntry, 'timestamp'> & { timestamp?: Date | string } = {
+        level: rawLogEntry.level,
+        message: rawLogEntry.message,
+        userId: rawLogEntry.userId,
+        component: rawLogEntry.component,
+        details: rawLogEntry.details,
+        // Allow client timestamp, but server can override or set if missing
+        timestamp: rawLogEntry.timestamp ? new Date(rawLogEntry.timestamp) : undefined 
+     };
 
-    await submitLogEntry(logEntry); // Your function to process/store the log entry
+    await submitLogEntry(logEntryToSubmit as Omit<LogEntry, 'timestamp'>); // submitLogEntry in service will handle final timestamp
 
-    // Respond quickly to the sender
     return NextResponse.json({ message: 'Log entry received' }, { status: 200 });
 
   } catch (error: any) {
     console.error('Error submitting log entry:', error);
-    // Respond with an error status if processing failed
+    if (error instanceof SyntaxError) { // Handle JSON parsing errors
+        return NextResponse.json({ error: 'Invalid JSON format in request body.' }, { status: 400 });
+    }
     return NextResponse.json({ error: error.message || 'Failed to submit log entry' }, { status: 500 });
   }
 }

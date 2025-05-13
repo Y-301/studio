@@ -1,7 +1,16 @@
 // src/app/api/simulations/trigger/route.ts
 import { NextResponse } from 'next/server';
-import { startWakeUpSimulation, SimulationParameters } from '@/backend/services/simulationService'; // Assuming this exists
-import { getCurrentUser } from '@/backend/services/authService'; // To get the current user
+// Assuming SimulationParameters is defined in simulationService and startWakeUpSimulation exists
+import { type SimulationParameters } from '@/backend/services/simulationService'; 
+import { getCurrentUser } from '@/backend/services/authService'; 
+
+// Mock function as simulationService is not fully implemented
+const startWakeUpSimulation = async (userId: string, params: SimulationParameters): Promise<void> => {
+  console.log(`Mock: Starting wake-up simulation for user ${userId} with params:`, params);
+  // In a real app, this would trigger the simulation logic, potentially involving device control.
+  return Promise.resolve();
+};
+
 
 // POST /api/simulations/trigger - Trigger a new simulation for the current user
 export async function POST(request: Request) {
@@ -11,31 +20,37 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: 'Not authenticated' }, { status: 401 });
     }
 
-    const simulationParams: SimulationParameters = await request.json();
-    // TODO: Add input validation for simulationParams
-    // Ensure required fields like startTime, durationMinutes, intensity are present
-    // Validate the format of startTime, durationMinutes, intensity, etc.
-
-    // Convert startTime string to Date object if needed (if sent as string from frontend)
-    if (typeof simulationParams.startTime === 'string') {
-        simulationParams.startTime = new Date(simulationParams.startTime);
+    const rawBody = await request.json();
+    
+    // Basic validation for simulationParams
+    if (!rawBody || typeof rawBody.startTime !== 'string' || typeof rawBody.durationMinutes !== 'number' || !rawBody.intensity) {
+        return NextResponse.json({ error: 'Missing or invalid simulation parameters. Required: startTime (string), durationMinutes (number), intensity (string).' }, { status: 400 });
+    }
+    if (!['low', 'medium', 'high'].includes(rawBody.intensity)) {
+         return NextResponse.json({ error: 'Invalid intensity value. Must be low, medium, or high.' }, { status: 400 });
+    }
+    if (isNaN(new Date(rawBody.startTime).getTime())) {
+        return NextResponse.json({ error: 'Invalid startTime format. Please use a valid ISO date string.' }, { status: 400 });
+    }
+    if (rawBody.durationMinutes <= 0 || rawBody.durationMinutes > 120) { // Example bounds
+        return NextResponse.json({ error: 'Invalid durationMinutes. Must be between 1 and 120.' }, { status: 400 });
     }
 
-    // Basic validation example
-    if (!simulationParams.startTime || typeof simulationParams.durationMinutes !== 'number' || !simulationParams.intensity) {
-        return NextResponse.json({ error: 'Missing required simulation parameters' }, { status: 400 });
-    }
-     if (!['low', 'medium', 'high'].includes(simulationParams.intensity)) {
-         return NextResponse.json({ error: 'Invalid intensity value' }, { status: 400 });
-     }
 
+    const simulationParams: SimulationParameters = {
+        ...rawBody,
+        startTime: new Date(rawBody.startTime), // Convert string to Date object
+    };
 
-    await startWakeUpSimulation(user.id, simulationParams); // Your function to start the simulation
+    await startWakeUpSimulation(user.id, simulationParams); 
 
-    return NextResponse.json({ message: 'Simulation triggered successfully' });
+    return NextResponse.json({ message: 'Wake-up simulation triggered successfully (Mock)' });
 
   } catch (error: any) {
     console.error('Error triggering simulation:', error);
+    if (error instanceof SyntaxError) {
+        return NextResponse.json({ error: 'Invalid JSON in request body.' }, { status: 400 });
+    }
     return NextResponse.json({ error: error.message || 'Failed to trigger simulation' }, { status: 500 });
   }
 }

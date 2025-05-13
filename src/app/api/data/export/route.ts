@@ -1,7 +1,14 @@
 // src/app/api/data/export/route.ts
 import { NextResponse } from 'next/server';
-import { requestDataExport } from '@/backend/services/dataService'; // Assuming this exists
+// import { requestDataExport } from '@/backend/services/dataService'; // Assuming this exists
 import { getCurrentUser } from '@/backend/services/authService'; // To get the current user
+
+// Mock function
+const requestDataExport = async (userId: string, dataType?: string | null, startDate?: string | null, endDate?: string | null): Promise<string | null> => {
+  console.log(`Mock: Data export requested for user ${userId}. DataType: ${dataType}, Start: ${startDate}, End: ${endDate}`);
+  // In a real app, this would trigger an asynchronous export process.
+  return `export_id_${Date.now()}`;
+};
 
 // GET /api/data/export - Request data export for the current user
 export async function GET(request: Request) {
@@ -11,36 +18,27 @@ export async function GET(request: Request) {
       return NextResponse.json({ message: 'Not authenticated' }, { status: 401 });
     }
 
-    // Optional: Read query parameters for specific data types or date ranges to export
-    // const { searchParams } = new URL(request.url);
-    // const dataType = searchParams.get('dataType'); // e.g., 'simulations', 'events'
-    // const startDate = searchParams.get('startDate');
-    // const endDate = searchParams.get('endDate');
+    const { searchParams } = new URL(request.url);
+    const dataType = searchParams.get('dataType'); 
+    const startDate = searchParams.get('startDate');
+    const endDate = searchParams.get('endDate');
 
-    // TODO: Add input validation for query parameters if used
+    // Input validation for query parameters can be added here if they become more critical
+    // For example, checking date formats or valid dataType values.
 
-
-    // In a real application, data export is often an asynchronous process (can take time).
-    // This endpoint typically triggers the export process and informs the user how to retrieve it (e.g., email link).
-    const exportId = await requestDataExport(user.id /*, dataType, startDate, endDate */); // Your function to initiate export
+    const exportId = await requestDataExport(user.id, dataType, startDate, endDate); 
 
      if (!exportId) {
-         // Could return an error if export failed to start
          return NextResponse.json({ error: 'Failed to initiate data export' }, { status: 500 });
      }
 
-
-    // Inform the user that the export has been initiated
-    // TODO: Provide information on how the user will receive the export (e.g., "an email will be sent to you")
-    return NextResponse.json({ message: 'Data export initiated', exportId: exportId });
+    return NextResponse.json({ 
+      message: 'Data export initiated. In a real application, you might receive an email with a download link once ready.', 
+      exportId: exportId 
+    });
 
   } catch (error: any) {
     console.error('Error initiating data export:', error);
     return NextResponse.json({ error: error.message || 'Failed to initiate data export' }, { status: 500 });
   }
 }
-
-// You might add GET /api/data/export/[exportId]/status to check the status of an export
-// export async function GET(request: Request, { params }: { params: { exportId: string } }) { ... }
-// You might add GET /api/data/export/[exportId]/download if providing direct downloads (requires careful security)
-// export async function GET(request: Request, { params }: { params: { exportId: string } }) { ... }

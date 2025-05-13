@@ -4,14 +4,11 @@ import * as settingsService from '../services/settingsService';
 import { log } from '../services/logService';
 import type { UserSettings } from '../models/settings';
 
-const MOCK_USER_ID = 'user1'; // TODO: Replace with actual user ID from auth middleware
+const DEFAULT_MOCK_USER_ID_IF_NO_AUTH = 'user1';
 
 export const getUserSettings = async (req: Request, res: Response) => {
-  // For GET /api/settings (no :userId param), we'd use authenticated user ID
-  // For GET /api/settings/:userId (if kept), use req.params.userId
-  // This example assumes the route might not have :userId and falls back to MOCK_USER_ID.
-  // If your route is always /api/settings/:userId, then req.params.userId is primary.
-  const userId = req.params.userId || MOCK_USER_ID; // Adjust based on your route structure
+  // The frontend passes userId in the path for settings for now
+  const userId = req.params.userId || (req.headers['x-user-id'] as string) || DEFAULT_MOCK_USER_ID_IF_NO_AUTH;
 
   if (!userId) {
     log('warn', 'User ID is required for getUserSettings.', undefined, { params: req.params, component: 'SettingsController' });
@@ -29,8 +26,7 @@ export const getUserSettings = async (req: Request, res: Response) => {
 };
 
 export const updateUserSettings = async (req: Request, res: Response) => {
-  // Similar to getUserSettings, determine userId based on route structure and auth
-  const userId = req.params.userId || MOCK_USER_ID;
+  const userId = req.params.userId || (req.headers['x-user-id'] as string) || DEFAULT_MOCK_USER_ID_IF_NO_AUTH;
   const updates = req.body as Partial<Omit<UserSettings, 'id' | 'userId' | 'createdAt' | 'updatedAt'>>;
 
 
@@ -43,7 +39,6 @@ export const updateUserSettings = async (req: Request, res: Response) => {
     return res.status(400).json({ message: 'No settings provided to update.' });
   }
   
-  // Basic validation example from original controller (can be expanded)
   if (updates.theme && !['light', 'dark', 'system'].includes(updates.theme)) {
       log('warn', `Invalid theme value: ${updates.theme}`, userId, { component: 'SettingsController' });
       return res.status(400).json({ message: 'Invalid theme value. Must be light, dark, or system.' });
@@ -60,7 +55,6 @@ export const updateUserSettings = async (req: Request, res: Response) => {
   try {
     const updatedSettings = await settingsService.updateUserSettings(userId, updates);
     if (!updatedSettings) {
-        // This might occur if service logic determines an update shouldn't happen, though current service creates if not exists.
         return res.status(404).json({ message: 'Settings not found or update failed.' });
     }
     log('info', `User settings updated successfully for ${userId}`, userId, { component: 'SettingsController', updates: Object.keys(updates) });

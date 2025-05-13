@@ -1,31 +1,27 @@
 // backend/src/controllers/dashboardController.ts
 import type { Request, Response } from 'express';
-import * as deviceService from '../services/deviceService';
-import * as routineService from '../services/routineService'; // Assuming routineService will be created/updated
+import * * as deviceService from '../services/deviceService';
+import * as routineService from '../services/routineService'; 
 import { log } from '../services/logService';
 
-const MOCK_USER_ID = 'user1'; // TODO: Replace with actual user ID from auth middleware
+const DEFAULT_MOCK_USER_ID_IF_NO_AUTH = 'user1'; 
 
 export const getDashboardSummary = async (req: Request, res: Response) => {
-  const userId = (req.query.userId as string) || MOCK_USER_ID; 
+  // In a real app, userId would come from authenticated session/token.
+  // For this backend, 'X-User-ID' header is used, falling back to default if not present.
+  const userId = (req.headers['x-user-id'] as string) || DEFAULT_MOCK_USER_ID_IF_NO_AUTH; 
+  
   try {
     const devices = await deviceService.getDevicesByUserId(userId);
-    // const routines = await routineService.getRoutinesByUserId(userId); // Assuming this function exists
-
-    // Mock routine data if service not ready
-    const routines = [
-        { id: "1", name: "Morning Energizer", active: true, lastRun: "Today, 07:00 AM"},
-        { id: "2", name: "Evening Wind-Down", active: true, lastRun: "Yesterday, 10:00 PM"},
-    ];
-
+    const routines = await routineService.getRoutinesByUserId(userId);
 
     const summary = {
-      activeDevices: devices.filter(d => d.status === 'on' || (d.type === 'thermostat' && parseInt(d.status) > 0)).length, // Example logic for active
+      activeDevices: devices.filter(d => d.status.toLowerCase() === 'on' || (d.type === 'thermostat' && parseInt(d.status) > 0)).length,
       totalDevices: devices.length,
-      activeRoutines: routines.filter(r => r.active).length,
+      activeRoutines: routines.filter(r => r.isEnabled).length,
       totalRoutines: routines.length,
-      nextWakeUpTime: "Tomorrow, 06:45 AM (Simulated)", // Placeholder
-      lastRoutineRun: routines.length > 0 ? `${routines[0].name}, ${routines[0].lastRun}` : "N/A", // Placeholder
+      nextWakeUpTime: "Tomorrow, 06:45 AM (Simulated)", // Placeholder, could be derived from routines
+      lastRoutineRun: routines.length > 0 && routines[0].lastRun ? `${routines[0].name}, ${new Date(routines[0].lastRun).toLocaleString()}` : "N/A",
     };
     
     log('info', `Fetched dashboard summary for user ${userId}`, userId, { component: 'DashboardController' });

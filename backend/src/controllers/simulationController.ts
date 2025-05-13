@@ -3,10 +3,10 @@ import type { Request, Response } from 'express';
 import * as simulationService from '../services/simulationService';
 import { log } from '../services/logService';
 
-const MOCK_USER_ID = 'user1'; // TODO: Replace with actual user ID from auth middleware
+const DEFAULT_MOCK_USER_ID_IF_NO_AUTH = 'user1';
 
 export const getFloorPlanData = async (req: Request, res: Response) => {
-  const userId = MOCK_USER_ID; // Replace with (req as any).user?.id or similar
+  const userId = (req.headers['x-user-id'] as string) || DEFAULT_MOCK_USER_ID_IF_NO_AUTH;
   try {
     const floorPlan = await simulationService.getFloorPlan(userId);
     res.status(200).json(floorPlan);
@@ -17,10 +17,9 @@ export const getFloorPlanData = async (req: Request, res: Response) => {
 };
 
 export const saveFloorPlanData = async (req: Request, res: Response) => {
-  const userId = MOCK_USER_ID; // Replace with (req as any).user?.id or similar
+  const userId = (req.headers['x-user-id'] as string) || DEFAULT_MOCK_USER_ID_IF_NO_AUTH;
   const floorPlanData: Omit<simulationService.FloorPlanData, 'userId'> = req.body;
 
-  // Basic validation
   if (!floorPlanData || !Array.isArray(floorPlanData.rooms) || !Array.isArray(floorPlanData.placedDevices) || typeof floorPlanData.selectedFloor !== 'string') {
     log('warn', `Invalid floor plan data provided for user ${userId}`, userId, { component: 'SimulationController', body: req.body });
     return res.status(400).json({ message: "Invalid floor plan data provided" });
@@ -35,9 +34,8 @@ export const saveFloorPlanData = async (req: Request, res: Response) => {
   }
 };
 
-// Placeholder for simulation history if needed via this controller
 export const getSimHistory = async (req: Request, res: Response) => {
-  const userId = MOCK_USER_ID;
+  const userId = (req.headers['x-user-id'] as string) || DEFAULT_MOCK_USER_ID_IF_NO_AUTH;
   const limit = parseInt(req.query.limit as string || '10', 10);
   try {
     const history = await simulationService.getSimulationHistory(userId, limit);

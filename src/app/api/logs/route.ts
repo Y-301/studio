@@ -1,32 +1,38 @@
 // src/app/api/logs/route.ts
 import { NextResponse } from 'next/server';
-import { getRecentLogs } from '@/backend/services/logService'; // Assuming this exists
-import { getCurrentUser } from '@/backend/services/authService'; // To get the current user
+import { getRecentLogs, LogEntry } from '@/backend/services/logService'; // Assuming this exists
+// import { getCurrentUser } from '@/backend/services/authService'; // To get the current user
 
 // GET /api/logs - Get recent log entries (potentially filtered by user or system)
 export async function GET(request: Request) {
   try {
     // NOTE: This endpoint might be for administrators or for fetching logs related to the current user.
-    // If it's for user-specific logs, uncomment the authentication check:
+    // If it's for user-specific logs, uncomment and use authentication check:
     // const user = await getCurrentUser(request);
     // if (!user) {
     //   return NextResponse.json({ message: 'Not authenticated' }, { status: 401 });
     // }
 
-    // Optional: Read query parameters for filtering, pagination, etc.
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '20', 10); // Default limit to 20
-    // const level = searchParams.get('level'); // e.g., 'info', 'warn', 'error'
+    const limitParam = searchParams.get('limit');
+    let limit = 20; // Default limit
+    if (limitParam) {
+      const parsedLimit = parseInt(limitParam, 10);
+      if (isNaN(parsedLimit) || parsedLimit <= 0 || parsedLimit > 500) { // Added upper bound
+        return NextResponse.json({ error: 'Invalid limit parameter. Must be a positive number up to 500.' }, { status: 400 });
+      }
+      limit = parsedLimit;
+    }
+    
+    const levelParam = searchParams.get('level');
+    // Validate 'level' if used, e.g., against a list of valid log levels.
+    // const validLevels = ['debug', 'info', 'warn', 'error', 'success'];
+    // if (levelParam && !validLevels.includes(levelParam.toLowerCase())) {
+    //     return NextResponse.json({ error: 'Invalid level parameter.' }, { status: 400 });
+    // }
     // const userId = user ? user.id : undefined; // Pass user ID if filtering by user
 
-     // TODO: Add validation for query parameters (e.g., ensure limit is positive)
-     if (isNaN(limit) || limit <= 0) {
-         return NextResponse.json({ error: 'Invalid limit parameter' }, { status: 400 });
-     }
-     // TODO: Validate 'level' if used
-
-
-    const logs = await getRecentLogs(limit /*, level, userId */); // Your function to get logs
+    const logs = await getRecentLogs(limit, levelParam as LogEntry['level'] /*, userId */);
 
     return NextResponse.json({ logs });
 

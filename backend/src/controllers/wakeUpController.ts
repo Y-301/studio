@@ -2,17 +2,17 @@
 import type { Request, Response } from 'express';
 import { scheduleOneTimeAction } from '../services/schedulerService';
 import { log } from '../services/logService';
-import * as deviceService from '../services/deviceService'; // Import device service
+import * as deviceService from '../services/deviceService'; 
 import type { Device } from '../models/device';
 
 interface WakeUpParams {
-  userId: string;
-  time: string; // e.g., "2024-07-30T07:00:00.000Z"
+  userId?: string; // Made optional, will use header or default
+  time: string; 
   duration: number; // in minutes
   intensity: 'low' | 'medium' | 'high';
 }
 
-const MOCK_USER_ID = 'user1'; // TODO: Replace with actual user ID from auth
+const DEFAULT_MOCK_USER_ID_IF_NO_AUTH = 'user1'; 
 
 // Helper function to simulate device actions
 const simulateDeviceAction = async (userId: string, actionDescription: string, deviceType?: Device['type'], targetStatus?: string, targetSettings?: any) => {
@@ -20,7 +20,6 @@ const simulateDeviceAction = async (userId: string, actionDescription: string, d
   log('info', `Wake-up simulation action: ${actionDescription}`, userId, { component: 'WakeUpController' });
 
   if (deviceType) {
-    // Find devices of this type for the user
     const userDevices = await deviceService.getDevicesByUserId(userId);
     const targetDevices = userDevices.filter(d => d.type === deviceType);
 
@@ -43,18 +42,24 @@ const simulateDeviceAction = async (userId: string, actionDescription: string, d
 export const simulateWakeUp = async (req: Request, res: Response) => {
   try {
     const params = req.body as WakeUpParams;
-    const userId = params.userId || MOCK_USER_ID; // Use provided userId or mock
+    const userId = params.userId || (req.headers['x-user-id'] as string) || DEFAULT_MOCK_USER_ID_IF_NO_AUTH; 
 
-    // Basic validation
     if (!params.time || !params.duration || !params.intensity) {
       log('warn', 'Missing required wake-up parameters.', userId, { body: req.body });
-      return res.status(400).json({ message: 'Missing required wake-up parameters.' });
+      return res.status(400).json({ message: 'Missing required wake-up parameters: time, duration, and intensity.' });
     }
+    if (!['low', 'medium', 'high'].includes(params.intensity)) {
+        return res.status(400).json({ message: 'Invalid intensity value. Must be low, medium, or high.' });
+    }
+    if (params.duration <=0 || params.duration > 120) {
+        return res.status(400).json({ message: 'Invalid duration. Must be between 1 and 120 minutes.' });
+    }
+
 
     const wakeUpTime = new Date(params.time);
     if (isNaN(wakeUpTime.getTime())) {
       log('warn', `Invalid time format for wake-up: ${params.time}`, userId);
-      return res.status(400).json({ message: 'Invalid time format.' });
+      return res.status(400).json({ message: 'Invalid time format. Please use ISO 8601 format.' });
     }
 
     const now = new Date();
@@ -69,7 +74,6 @@ export const simulateWakeUp = async (req: Request, res: Response) => {
       await simulateDeviceAction(userId, 'Gradually turn on smart lights to low.', 'light', 'on', { brightness: params.intensity === 'low' ? 30 : (params.intensity === 'medium' ? 40 : 20) });
       await simulateDeviceAction(userId, 'Play gentle wake-up soundscape at low volume.', 'speaker', 'on', { volume: params.intensity === 'low' ? 20 : 30 });
       
-      // Schedule further actions based on intensity and duration
       const thirdDurationMs = params.duration * 60 * 1000 / 3;
       const halfDurationMs = params.duration * 60 * 1000 / 2;
       const twoThirdsDurationMs = params.duration * 60 * 1000 * 2 / 3;
@@ -83,10 +87,10 @@ export const simulateWakeUp = async (req: Request, res: Response) => {
       }
       if (params.intensity === 'high') {
          setTimeout(async () => {
-            await simulateDeviceAction(userId, 'Start coffee machine sequence (simulated via a smart switch).', 'switch', 'on'); // Assuming coffee machine is on a smart switch
+            await simulateDeviceAction(userId, 'Start coffee machine sequence (simulated via a smart switch).', 'switch', 'on'); 
          }, halfDurationMs);
         setTimeout(async () => {
-            await simulateDeviceAction(userId, 'Gradually open smart blinds.', 'blinds', 'partially_open', { position: 50 }); // Assuming 50% open
+            await simulateDeviceAction(userId, 'Gradually open smart blinds.', 'blinds', 'partially_open', { position: 50 }); 
             await simulateDeviceAction(userId, 'Set thermostat to comfortable temperature.', 'thermostat', 'on', { temperature: 21 });
         }, twoThirdsDurationMs);
       }
@@ -102,16 +106,15 @@ export const simulateWakeUp = async (req: Request, res: Response) => {
     };
 
 
-    if (delayMs <= 5000) { // Consider times within 5 seconds as "immediate"
+    if (delayMs <= 5000) { 
       console.log(`[WakeUpController] Simulating immediate wake-up for user ${userId}. Duration: ${params.duration}m, Intensity: ${params.intensity}.`);
       await log('info', `Starting immediate wake-up simulation for user ${userId}.`, userId, { duration: params.duration, intensity: params.intensity });
       
-      performWakeUpActions(); // Execute immediately
+      performWakeUpActions(); 
 
       return res.status(200).json({ message: `Immediate wake-up simulation initiated for user ${userId}.` });
     }
     
-    // Schedule the wake-up sequence for the future
     const scheduledJobId = scheduleOneTimeAction(delayMs, performWakeUpActions);
 
     console.log(`[WakeUpController] Wake-up for user ${userId} scheduled for ${wakeUpTime.toISOString()}. Job ID: ${scheduledJobId}`);
