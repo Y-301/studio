@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -19,8 +18,8 @@ import {
   SidebarGroup,
   SidebarGroupLabel,
   SidebarGroupContent,
-  SidebarSeparator, // Corrected: Import directly from sidebar if it exports it, or from ui/separator
-} from '@/components/ui/sidebar';
+  SidebarSeparator, 
+} from '@/components/ui/sidebar'; // Correctly imports SidebarSeparator from sidebar.tsx
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -61,6 +60,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
              router.push('/auth/login');
         } else if (isProtectedDashboardPage && process.env.NEXT_PUBLIC_USE_MOCK_MODE === 'true'){
             console.log("Mock mode: User not authenticated for protected page, but allowing access to", pathname, "for demo purposes.");
+        } else if (pathname === '/dashboard' && !user && process.env.NEXT_PUBLIC_USE_MOCK_MODE === 'true') {
+             console.log("Mock mode: User not authenticated for /dashboard, allowing guest access.");
         }
       }
       setLoadingAuth(false);
@@ -76,6 +77,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       setPageTitle(currentNavItem.title);
     } else if (pathname === '/dashboard') {
       setPageTitle('Dashboard Overview');
+    } else if (pathname === '/auth/settings') {
+      setPageTitle('Settings');
     }
   }, [pathname]);
 
@@ -147,9 +150,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <SidebarFooter className="p-2 border-t border-sidebar-border">
            <SidebarMenu>
             <SidebarMenuItem>
-               <Link href="/dashboard/settings" legacyBehavior passHref>
+               <Link href="/auth/settings" legacyBehavior passHref>
                 <SidebarMenuButton 
-                  isActive={pathname.startsWith('/dashboard/settings')}
+                  isActive={pathname.startsWith('/auth/settings')}
                   tooltip={{content: "Settings", side: 'right', align: 'center', className: "ml-2"}}
                   className="w-full justify-start"
                   disabled={!currentUser && process.env.NEXT_PUBLIC_USE_MOCK_MODE !== 'true'}
@@ -174,6 +177,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <ThemeToggle />
             <Button variant="ghost" size="icon" aria-label="Notifications" className="relative rounded-full h-9 w-9">
               <Bell className="h-5 w-5" />
+              {/* Add a badge for notification count if needed */}
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -192,19 +196,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 {currentUser ? (
                   <>
                     <DropdownMenuItem asChild>
-                      <Link href="/dashboard/settings" className="flex items-center w-full">
+                      <Link href="/auth/settings" className="flex items-center w-full">
                         <Settings className="mr-2 h-4 w-4" /> 
                         Profile & Settings
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
-                      <Link href="/dashboard/settings#billing" className="flex items-center w-full">
+                      <Link href="/auth/settings#billing" className="flex items-center w-full">
                         <CreditCard className="mr-2 h-4 w-4" />
                         Billing
                       </Link>
                     </DropdownMenuItem>
                      <DropdownMenuItem asChild>
-                      <Link href="/dashboard/settings#integrations" className="flex items-center w-full">
+                      <Link href="/auth/settings#integrations" className="flex items-center w-full">
                         <LinkIconLucide className="mr-2 h-4 w-4" />
                         Integrations
                       </Link>
