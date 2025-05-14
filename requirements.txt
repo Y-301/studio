@@ -1,0 +1,19 @@
+
+# WakeSync Project - Node.js Dependencies
+This project uses Node.js and its package manager (npm or Yarn) to manage dependencies.
+The list of all frontend and backend dependencies, along with their versions,
+can be found in the `package.json` file in the project root directory and in the `backend/package.json` file respectively.
+
+To install all necessary dependencies for the frontend, navigate to the project root directory and run:
+npm install
+# or
+yarn install
+
+To install dependencies for the backend, navigate to the `backend/` directory and run:
+cd backend
+npm install
+# or
+yarn install
+
+There is no traditional `requirements.txt` file as used in Python projects.
+The `package.json` and `package-lock.json` (or `yarn.lock`) files serve this purpose.

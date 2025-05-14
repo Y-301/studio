@@ -1,9 +1,10 @@
+
 'use client';
 
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { auth, type User } from '@/lib/firebase'; 
+import { auth, type User } from '@/lib/firebase';
 import {
   SidebarProvider,
   Sidebar,
@@ -18,7 +19,7 @@ import {
   SidebarGroup,
   SidebarGroupLabel,
   SidebarGroupContent,
-  SidebarSeparator, 
+  SidebarSeparator,
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -30,9 +31,9 @@ import {
   DropdownMenuSeparator as DropdownMenuSeparatorComponent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Bell, LogOut, UserCircle, CreditCard, Settings as SettingsIconLucide, Link as LinkIconLucideComponent, Loader2, LogIn, Settings } from 'lucide-react'; 
+import { Bell, LogOut, UserCircle, CreditCard, Settings as SettingsIconLucide, Link as LinkIconLucideComponent, Loader2, LogIn, Settings } from 'lucide-react';
 import { Logo } from '@/components/shared/Logo';
-import { dashboardNavItems, type NavItem } from '@/config/dashboard-nav'; 
+import { dashboardNavItems, type NavItem } from '@/config/dashboard-nav';
 import { cn } from '@/lib/utils';
 import { Footer } from '@/components/layout/Footer';
 import { useToast } from '@/hooks/use-toast';
@@ -55,7 +56,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         setCurrentUser(user as User);
       } else {
         setCurrentUser(null);
-        // If not in mock mode and trying to access a protected dashboard page, redirect to login
         if (!isMockMode && pathname.startsWith('/dashboard/') && pathname !== '/dashboard') {
              console.log("User not authenticated for protected page, redirecting to login for:", pathname);
              router.push('/auth/login');
@@ -74,7 +74,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       setPageTitle(currentNavItem.title);
     } else if (pathname === '/dashboard') {
       setPageTitle('Dashboard Overview');
-    } else if (pathname === '/dashboard/settings') { // Changed from /auth/settings
+    } else if (pathname === '/dashboard/settings') {
       setPageTitle('Settings');
     }
   }, [pathname]);
@@ -83,15 +83,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     try {
       await auth.signOut(auth);
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
-      setCurrentUser(null); 
+      setCurrentUser(null);
       router.push('/auth/login');
     } catch (error) {
       console.error("Logout error:", error);
       toast({ title: "Logout Failed", description: (error as Error).message || "Could not log out. Please try again.", variant: "destructive" });
     }
   };
-  
-  // Show loader if auth is loading AND user is not yet determined AND it's not mock mode (or if it's a protected page in mock mode without a user)
+
   const shouldShowLoader = loadingAuth && !currentUser && !isMockMode && pathname.startsWith('/dashboard/') && pathname !== '/dashboard';
 
 
@@ -103,13 +102,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </div>
     );
   }
-  
-  // Determine if the current item should be disabled
-  // In mock mode, most items are enabled for demo.
-  // In real mode, items might be disabled if no user is logged in.
+
   const isNavItemDisabled = (item: NavItem) => {
-    if (isMockMode) return false; // In mock mode, enable all for demo
-    return item.disabled === undefined ? !currentUser : item.disabled && !currentUser; // Default to disabled if no user
+    if (isMockMode) return item.title === 'Logs' || item.title === 'Integrations' ? true : false; // Disable Logs and Integrations in mock mode for now
+    return item.disabled === undefined ? !currentUser : item.disabled && !currentUser;
   };
 
 
@@ -131,7 +127,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <SidebarMenu>
                   {group.items.map((item: NavItem) => (
                     <SidebarMenuItem key={item.href} className="my-0.5">
-                      <Link href={item.href} legacyBehavior passHref>
+                      <Link href={item.href} legacyBehavior={item.href.includes('#') ? undefined : true} passHref={item.href.includes('#') ? undefined : true}>
                         <SidebarMenuButton
                           isActive={pathname === item.href || (pathname.startsWith(item.href + '/') && item.href !== '/dashboard') || (item.href.includes('#') && pathname === item.href.split('#')[0])}
                           tooltip={{content: item.title, side: 'right', align: 'center', className: "ml-2"}}
@@ -156,9 +152,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <SidebarFooter className="p-2 border-t border-sidebar-border">
            <SidebarMenu>
             <SidebarMenuItem>
-               <Link href="/dashboard/settings" legacyBehavior passHref> {/* Changed from /auth/settings */}
-                <SidebarMenuButton 
-                  isActive={pathname.startsWith('/dashboard/settings')} // Changed from /auth/settings
+               <Link href="/dashboard/settings" legacyBehavior passHref>
+                <SidebarMenuButton
+                  isActive={pathname.startsWith('/dashboard/settings')}
                   tooltip={{content: "Settings", side: 'right', align: 'center', className: "ml-2"}}
                   className="w-full justify-start"
                   disabled={isMockMode ? false : !currentUser}
@@ -173,7 +169,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </Sidebar>
       <SidebarInset className="flex flex-col min-h-screen bg-secondary/30 dark:bg-background">
         <header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6 shadow-sm">
-          <div className="md:hidden"> 
+          <div className="md:hidden">
              <SidebarTrigger />
           </div>
           <div className="flex-1">
@@ -183,7 +179,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <ThemeToggle />
             <Button variant="ghost" size="icon" aria-label="Notifications" className="relative rounded-full h-9 w-9">
               <Bell className="h-5 w-5" />
-              {/* Add a badge for notification count if needed */}
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -199,57 +194,71 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>{currentUser ? (currentUser.displayName || currentUser.email || "My Account") : "Guest"}</DropdownMenuLabel>
                 <DropdownMenuSeparatorComponent />
-                {currentUser || isMockMode ? ( // Show settings link if user exists OR in mock mode
+                {currentUser || isMockMode ? (
                   <>
                     <DropdownMenuItem asChild>
-                      <Link href="/dashboard/settings" className="flex items-center w-full"> {/* Changed from /auth/settings */}
-                        <SettingsIconLucide className="mr-2 h-4 w-4" /> 
-                        Profile & Settings
+                      <Link href="/dashboard/settings" className="flex items-center w-full">
+                        <>
+                          <SettingsIconLucide className="mr-2 h-4 w-4" />
+                          Profile & Settings
+                        </>
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
-                      <Link href="/dashboard/settings#billing" className="flex items-center w-full"> {/* Changed from /auth/settings */}
-                        <CreditCard className="mr-2 h-4 w-4" />
-                        Billing
+                      <Link href="/dashboard/settings#billing" className="flex items-center w-full">
+                        <>
+                          <CreditCard className="mr-2 h-4 w-4" />
+                          Billing
+                        </>
                       </Link>
                     </DropdownMenuItem>
                      <DropdownMenuItem asChild>
-                      <Link href="/dashboard/settings#integrations" className="flex items-center w-full"> {/* Changed from /auth/settings */}
-                        <LinkIconLucideComponent className="mr-2 h-4 w-4" />
-                        Integrations
+                      <Link href="/dashboard/settings#integrations" className="flex items-center w-full">
+                        <>
+                          <LinkIconLucideComponent className="mr-2 h-4 w-4" />
+                          Integrations
+                        </>
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuSeparatorComponent />
-                    {currentUser && ( // Only show logout if a real/mock user is "logged in"
+                    {currentUser && (
                         <DropdownMenuItem
                         onClick={handleLogout}
                         className="text-destructive focus:bg-destructive/10 focus:text-destructive cursor-pointer"
                         >
-                        <LogOut className="mr-2 h-4 w-4" />
-                        Logout
+                          <>
+                            <LogOut className="mr-2 h-4 w-4" />
+                            Logout
+                          </>
                         </DropdownMenuItem>
                     )}
-                    {!currentUser && isMockMode && ( // If in mock mode and no user, show login
+                    {!currentUser && isMockMode && (
                          <DropdownMenuItem asChild>
                             <Link href="/auth/login" className="flex items-center w-full">
+                              <>
                                 <LogIn className="mr-2 h-4 w-4" />
                                 Login (Mock)
+                              </>
                             </Link>
                         </DropdownMenuItem>
                     )}
                   </>
-                ) : ( // This block is for when not in mock mode and no user logged in
+                ) : (
                   <>
                     <DropdownMenuItem asChild>
                       <Link href="/auth/login" className="flex items-center w-full">
-                        <LogIn className="mr-2 h-4 w-4" />
-                        Login
+                        <>
+                          <LogIn className="mr-2 h-4 w-4" />
+                          Login
+                        </>
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
                       <Link href="/auth/signup" className="flex items-center w-full">
-                        <UserCircle className="mr-2 h-4 w-4" />
-                        Sign Up
+                        <>
+                          <UserCircle className="mr-2 h-4 w-4" />
+                          Sign Up
+                        </>
                       </Link>
                     </DropdownMenuItem>
                   </>
