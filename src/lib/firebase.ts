@@ -3,11 +3,9 @@
 // This file now primarily provides local authentication and data interaction logic
 // by calling the local backend.
 
-import type { apiClient } from './apiClient'; // Import type for stricter checking if needed
-
 // --- Local User Interface (replaces FirebaseUserType) ---
 export interface User {
-  uid: string;
+  uid: string; // Corresponds to 'id' from backend
   email: string | null;
   displayName: string | null;
   photoURL: string | null;
@@ -16,15 +14,16 @@ export interface User {
 }
 
 // --- App Status Context (New) ---
-export interface AppStatus {
-  isSeededByCsv: boolean;
-  isAppInitialized: boolean; // True if users exist (app has been set up)
-  isLoading: boolean;
-}
+// This is now primarily managed by AppContext.tsx which calls /api/data/app-status
+// export interface AppStatus {
+//   isSeededByCsv: boolean;
+//   isAppInitialized: boolean; // True if users exist (app has been set up)
+//   isLoading: boolean;
+// }
 
 // --- Local Authentication Logic ---
 const WAKESYNC_TOKEN_KEY = 'wakeSyncToken';
-const WAKESYNC_USER_KEY = 'wakeSyncUser';
+const WAKESYNC_USER_KEY = 'wakeSyncUser'; // Stores the User object (uid, displayName, email, photoURL)
 
 let currentUserInternal: User | null = null;
 const authStateListeners: Array<(user: User | null) => void> = [];
@@ -38,8 +37,10 @@ if (typeof window !== 'undefined') {
     }
   } catch (e) {
     console.error("Error parsing stored user:", e);
-    localStorage.removeItem(WAKESYNC_USER_KEY); // Attempt to clear corrupted data
-    localStorage.removeItem(WAKESYNC_TOKEN_KEY);
+    if (typeof window !== 'undefined') { // Double check for safety, though already in a window block
+      localStorage.removeItem(WAKESYNC_USER_KEY);
+      localStorage.removeItem(WAKESYNC_TOKEN_KEY);
+    }
   }
 
   window.addEventListener('storage', (event) => {
@@ -51,11 +52,15 @@ if (typeof window !== 'undefined') {
         try {
           newCurrentUser = JSON.parse(userJson);
         } catch (e) {
-          //
+          console.error("Error parsing user from storage event:", e);
+          // Clear potentially corrupted data
+          localStorage.removeItem(WAKESYNC_USER_KEY);
+          localStorage.removeItem(WAKESYNC_TOKEN_KEY);
         }
       }
-      if (currentUserInternal?.uid !== newCurrentUser?.uid || 
-          (currentUserInternal === null && newCurrentUser !== null) || 
+      // Compare UIDs to see if the actual user changed
+      if (currentUserInternal?.uid !== newCurrentUser?.uid ||
+          (currentUserInternal === null && newCurrentUser !== null) ||
           (currentUserInternal !== null && newCurrentUser === null)
       ) {
         currentUserInternal = newCurrentUser;
@@ -78,68 +83,85 @@ const notifyAuthStateChanged = () => {
   });
 };
 
+interface BackendUser {
+  id: string;
+  email: string;
+  name?: string;
+  photoURL?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  // other fields from backend if necessary
+}
+
+const mapBackendUserToFrontendUser = (backendUser: BackendUser): User => {
+  return {
+    uid: backendUser.id,
+    email: backendUser.email,
+    displayName: backendUser.name || null,
+    photoURL: backendUser.photoURL || null,
+  };
+};
+
 
 export const auth = {
-  currentUser: currentUserInternal, // Keep this updated
+  currentUser: currentUserInternal,
   onAuthStateChanged: (callback: (user: User | null) => void): (() => void) => {
     authStateListeners.push(callback);
-    // Call immediately with current state
-    if (typeof window !== 'undefined') { // Ensure this also runs client-side for initial state
+    if (typeof window !== 'undefined') {
         Promise.resolve().then(() => callback(currentUserInternal));
     } else {
-        // For SSR, callback with null or initial server-side derived user if implemented
         Promise.resolve().then(() => callback(null));
     }
-    return () => { // Unsubscribe function
+    return () => {
       const index = authStateListeners.indexOf(callback);
       if (index > -1) authStateListeners.splice(index, 1);
     };
   },
-  signInWithEmailAndPassword: async (_authIgnored: any, email: string, pass: string): Promise<{ user: User, token?: string }> => {
-    // This function needs apiClient, which might not be available if this file is imported server-side
-    // For functions that make API calls, ensure they are called client-side or handle SSR appropriately.
-    const localApiClient = (await import('./apiClient')).apiClient; // Dynamically import for client-side usage
+  signInWithEmailAndPassword: async (_authIgnored: any, email: string, pass: string): Promise<{ user: User; token?: string }> => {
+    const localApiClient = (await import('./apiClient')).apiClient;
     try {
-      const response = await localApiClient<{ user: User; token: string }>('/auth/login', {
+      const response = await localApiClient<{ user: BackendUser; token: string }>('/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password: pass }),
       });
       if (response.token && response.user && typeof window !== 'undefined') {
+        const feUser = mapBackendUserToFrontendUser(response.user);
         localStorage.setItem(WAKESYNC_TOKEN_KEY, response.token);
-        localStorage.setItem(WAKESYNC_USER_KEY, JSON.stringify(response.user));
-        currentUserInternal = response.user;
+        localStorage.setItem(WAKESYNC_USER_KEY, JSON.stringify(feUser));
+        currentUserInternal = feUser;
         notifyAuthStateChanged();
-        return { user: response.user, token: response.token };
+        return { user: feUser, token: response.token };
       }
       if (!response.token || !response.user) {
-        throw new Error("Login failed: No token or user data received from backend.");
+        throw new Error("Login failed: No token or transformed user data received/processed correctly from backend.");
       }
-      // This case should not be reached if window is undefined, but as a fallback
-      return { user: response.user, token: response.token };
+      // Fallback if window is undefined (should not happen for login UI flow)
+      return { user: mapBackendUserToFrontendUser(response.user), token: response.token };
 
     } catch (error) {
       console.error("signInWithEmailAndPassword error:", error);
-      throw error; // Re-throw to be caught by UI
+      throw error;
     }
   },
-  createUserWithEmailAndPassword: async (_authIgnored: any, email: string, pass: string, name?: string): Promise<{ user: User, token?: string }> => {
+  createUserWithEmailAndPassword: async (_authIgnored: any, email: string, pass: string, name?: string): Promise<{ user: User; token?: string }> => {
     const localApiClient = (await import('./apiClient')).apiClient;
     try {
-      const response = await localApiClient<{ user: User; token: string }>('/auth/signup', {
+      const response = await localApiClient<{ user: BackendUser; token: string }>('/auth/signup', {
         method: 'POST',
         body: JSON.stringify({ email, password: pass, name }),
       });
       if (response.token && response.user && typeof window !== 'undefined') {
+        const feUser = mapBackendUserToFrontendUser(response.user);
         localStorage.setItem(WAKESYNC_TOKEN_KEY, response.token);
-        localStorage.setItem(WAKESYNC_USER_KEY, JSON.stringify(response.user));
-        currentUserInternal = response.user;
+        localStorage.setItem(WAKESYNC_USER_KEY, JSON.stringify(feUser));
+        currentUserInternal = feUser;
         notifyAuthStateChanged();
-        return { user: response.user, token: response.token };
+        return { user: feUser, token: response.token };
       }
       if (!response.token || !response.user) {
-        throw new Error("Signup failed: No token or user data received from backend.");
+        throw new Error("Signup failed: No token or transformed user data received/processed correctly from backend.");
       }
-      return { user: response.user, token: response.token };
+      return { user: mapBackendUserToFrontendUser(response.user), token: response.token };
 
     } catch (error) {
       console.error("createUserWithEmailAndPassword error:", error);
@@ -150,7 +172,7 @@ export const auth = {
     const localApiClient = (await import('./apiClient')).apiClient;
     console.log(`[LocalAuth] Password reset email initiated for ${email} (via backend).`);
     try {
-        await localApiClient('/auth/request-password-reset', { // Assuming this endpoint exists or will be created
+        await localApiClient('/auth/request-password-reset', {
             method: 'POST',
             body: JSON.stringify({ email })
         });
@@ -168,8 +190,7 @@ export const auth = {
     currentUserInternal = null;
     notifyAuthStateChanged();
     try {
-        // Optionally call a backend logout endpoint if it invalidates tokens server-side
-        const localApiClient = (await import('./apiClient')).apiClient; // Conditional import
+        const localApiClient = (await import('./apiClient')).apiClient;
         await localApiClient('/auth/logout', { method: 'POST' });
     } catch (error) {
         console.warn("Error calling backend logout, proceeding with client-side logout:", error);
@@ -180,43 +201,49 @@ export const auth = {
     const localApiClient = (await import('./apiClient')).apiClient;
     if (currentUserInternal && currentUserInternal.uid === user.uid) {
       try {
-        // Optimistically update local state
-        const updatedUser = { ...currentUserInternal, ...profileUpdates };
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(WAKESYNC_USER_KEY, JSON.stringify(updatedUser));
-        }
-        currentUserInternal = updatedUser;
-        notifyAuthStateChanged();
-        console.log("[LocalAuth] Profile updated optimistically.");
-        
-        // Call backend to persist (example endpoint)
-        await localApiClient(`/users/${user.uid}/profile`, { 
-            method: 'PUT', 
-            body: JSON.stringify(profileUpdates) 
+        const backendProfileUpdates: { name?: string | null; photoURL?: string | null } = {};
+        if (profileUpdates.displayName !== undefined) backendProfileUpdates.name = profileUpdates.displayName;
+        if (profileUpdates.photoURL !== undefined) backendProfileUpdates.photoURL = profileUpdates.photoURL;
+
+        const response = await localApiClient<{ user: BackendUser }>(`/auth/profile`, {
+            method: 'PUT',
+            body: JSON.stringify(backendProfileUpdates)
         });
-        console.log("[LocalAuth] Profile update sent to backend.");
+
+        if (response.user) {
+            const feUser = mapBackendUserToFrontendUser(response.user);
+            if (typeof window !== 'undefined') {
+                localStorage.setItem(WAKESYNC_USER_KEY, JSON.stringify(feUser));
+            }
+            currentUserInternal = feUser;
+            notifyAuthStateChanged();
+            console.log("[LocalAuth] Profile updated and synced from backend.");
+        } else {
+            throw new Error("Profile update response did not include user data.");
+        }
 
       } catch (error) {
-        console.error("Error updating profile on backend, local changes might not persist:", error);
-        // Optionally revert optimistic update or notify user
+        console.error("Error updating profile on backend:", error);
         throw error;
       }
+    } else {
+        console.warn("[LocalAuth] updateProfile called but no current user or UID mismatch.");
     }
     return Promise.resolve();
   },
-  reauthenticateWithCredential: async (_user: User, credential: any): Promise<{user: User}> => {
+  // reauthenticateWithCredential and updatePassword now primarily rely on backend for logic
+  reauthenticateWithCredential: async (_user: User, credential: { password?: string }): Promise<{user: User}> => {
     const localApiClient = (await import('./apiClient')).apiClient;
-    console.warn("[LocalAuth] reauthenticateWithCredential called.");
+    console.warn("[LocalAuth] reauthenticateWithCredential called. Backend handles re-auth.");
     if (!currentUserInternal) throw new Error("No user to reauthenticate");
      try {
-        // Backend should handle re-authentication logic
-        // This is a placeholder for what a backend call might look like
-        const response = await localApiClient('/auth/reauthenticate', { // Example endpoint
+        // This endpoint is conceptual, backend needs a robust re-auth flow.
+        // For now, it might just verify password and return success if it matches.
+        await localApiClient('/auth/reauthenticate', { // Example endpoint
             method: 'POST',
-            body: JSON.stringify({ currentPassword: credential.password }) // Assuming credential contains password
+            body: JSON.stringify({ currentPassword: credential.password })
         });
-        // Assuming backend confirms reauth and returns user or success
-        return Promise.resolve({ user: currentUserInternal }); // Or response.user if backend returns it
+        return Promise.resolve({ user: currentUserInternal });
     } catch (error) {
         console.error("Reauthentication error:", error);
         throw error;
@@ -224,12 +251,12 @@ export const auth = {
   },
   updatePassword: async (_user: User, newPassword?: string | null, currentPassword?: string | null): Promise<void> => {
     const localApiClient = (await import('./apiClient')).apiClient;
-    console.warn("[LocalAuth] updatePassword called.");
+    console.warn("[LocalAuth] updatePassword called. Backend handles password change.");
      if (!newPassword) {
         throw new Error("New password cannot be empty.");
     }
-    if (!currentPassword && _user.uid !== "guest-user") { // Simple check, real reauth is better
-        console.warn("[LocalAuth] Current password not provided for password update. Backend might require it.");
+    if (!currentPassword && _user.uid !== "guest-user") {
+        console.warn("[LocalAuth] Current password not provided for password update. Backend will require it.");
     }
     try {
         await localApiClient(`/auth/change-password`, {
@@ -270,7 +297,7 @@ export const db = {
         console.warn(`[LocalDB-Stub] Attempted to ADD to collection: ${collectionPath}. Data should be added via local backend.`);
         return Promise.resolve({ id: "mock-new-doc-id" });
     },
-    where: (_fieldPath: string, _opStr: string, _value: any) => ({ // Basic stub for where
+    where: (_fieldPath: string, _opStr: string, _value: any) => ({
         get: async () => {
             console.warn(`[LocalDB-Stub] Attempted to GET with WHERE on collection: ${collectionPath}. Data should be queried via local backend.`);
             return Promise.resolve({ empty: true, docs: [], size: 0 });
@@ -294,7 +321,6 @@ export const storage = {
         return Promise.resolve();
     }
   }),
-  // Keep simplified top-level stubs if they were directly used
   uploadBytes: async (_ref: any, _data: any, _metadata?: any) => {
     console.warn(`[LocalStorage-Stub] storage.uploadBytes called. File handling via local backend.`);
     return { ref: { getDownloadURL: async () => "mock-upload-url" } } as any;
@@ -310,54 +336,31 @@ export const storage = {
 };
 
 
+// Simplified Timestamp and serverTimestamp for local use.
 export const Timestamp = {
-  fromDate: (date: Date) => date.toISOString(),
-  now: () => new Date().toISOString(),
+  fromDate: (date: Date) => date, // Return Date object or ISO string
+  now: () => new Date(),
 };
-export const serverTimestamp = () => new Date().toISOString(); 
+export const serverTimestamp = () => new Date(); // Or new Date().toISOString()
 
-export const app = { name: "[Local App Stub]" };
-
-export const getEmailProviderCredential = (email: string, pass: string) => {
-  console.warn("[LocalAuth] getEmailProviderCredential called. Actual reauth should be handled by backend.");
-  // For mock reauth, this might just return an object that updatePassword expects.
-  // Since we are moving reauth logic to backend, this might become less relevant.
-  return { type: "password", providerId: "password", email, password: pass }; // Placeholder
+// getEmailProviderCredential might not be directly equivalent in a custom backend.
+// For re-authentication, the backend would typically expect the current password.
+export const getEmailProviderCredential = (_email: string, pass: string) => {
+  console.warn("[LocalAuth] getEmailProviderCredential called. Passing password for backend re-auth.");
+  return { password: pass }; // Simplified for passing current password to backend
 };
 
-// Helper function for checking if an API key looks like a placeholder or is missing.
-const isApiKeyPlaceholder = (key?: string): boolean => {
-    if (!key) return true; // Key is missing or undefined
-    const lowerKey = key.toLowerCase();
-    const placeholders = ["your_", "placeholder", "mock_", "example"];
-    if (placeholders.some(p => lowerKey.includes(p))) return true;
-    if (key.length < 10) return true; // Arbitrary short length check
-    return false;
-};
 
+// Determine the effective mock mode for logging purposes.
+// The application now primarily relies on the local backend.
+// `NEXT_PUBLIC_USE_MOCK_MODE` can still be used to control frontend-only mocks if ever needed,
+// but the `apiClient` will generally hit the local backend.
 const explicitMockModeEnv = process.env.NEXT_PUBLIC_USE_MOCK_MODE;
-const firebaseApiKeyFromEnv = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
 
-// Determine the effective mock mode.
-// Priority:
-// 1. If NEXT_PUBLIC_USE_MOCK_MODE is explicitly "true" or "false".
-// 2. If not explicitly set, auto-detect based on Firebase API key validity.
-let effectiveMockMode: boolean;
 if (explicitMockModeEnv === 'true') {
-    effectiveMockMode = true;
-} else if (explicitMockModeEnv === 'false') {
-    effectiveMockMode = false;
+  console.info("WakeSync Frontend: NEXT_PUBLIC_USE_MOCK_MODE is true. Auth and API calls target local backend. Ensure backend is running.");
 } else {
-    effectiveMockMode = isApiKeyPlaceholder(firebaseApiKeyFromEnv);
+  console.info("WakeSync Frontend: NEXT_PUBLIC_USE_MOCK_MODE is false or not set. Auth and API calls target local backend. Ensure backend is running.");
 }
 
-// This log will now reflect the effective mode for console/debug purposes.
-// The actual API client logic now always hits the local backend.
-// The `src/lib/firebase.ts` mocks Firebase client-side specific behaviors.
-if (effectiveMockMode) {
-  console.info("WakeSync Frontend: Firebase services are MOCKED (due to NEXT_PUBLIC_USE_MOCK_MODE or placeholder API key). API calls target local backend.");
-} else {
-  console.info("WakeSync Frontend: Configured for REAL Firebase services (valid API key detected and NEXT_PUBLIC_USE_MOCK_MODE not 'true'). Ensure Firebase project is set up. API calls target local backend.");
-}
-// The type `User` is already defined in this file.
 export const storageRef = (instance: typeof storage, path?: string) => instance.ref(path);
