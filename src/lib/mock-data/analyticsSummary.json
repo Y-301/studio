@@ -1,0 +1,15 @@
+
+{
+  "summary": {
+    "totalDevices": 7,
+    "activeDevices": 3,
+    "totalRoutines": 3,
+    "activeRoutines": 2,
+    "simulationsRun": 15,
+    "mostUsedDeviceType": "light",
+    "lastRoutineExecuted": "Morning Energizer (Mock)",
+    "avgSleepHours": 7.2,
+    "avgEnergyLevel": "Medium",
+    "estimatedEnergySavings": "3 kWh this month (Mock)"
+  }
+}

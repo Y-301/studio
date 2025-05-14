@@ -1,0 +1,9 @@
+
+{
+  "activeDevices": 3,
+  "totalDevices": 7,
+  "activeRoutines": 2,
+  "totalRoutines": 3,
+  "nextWakeUpTime": "Tomorrow, 06:45 AM (Mock)",
+  "lastRoutineRun": "Morning Energizer, Today 07:00 AM (Mock)"
+}

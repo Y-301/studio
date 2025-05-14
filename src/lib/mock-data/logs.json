@@ -1,0 +1,7 @@
+
+{
+  "logs": [
+    { "timestamp": "2024-07-20T10:00:00.000Z", "level": "INFO", "message": "Mock log: System initialized.", "component": "MockService", "userId": "system" },
+    { "timestamp": "2024-07-20T10:05:00.000Z", "level": "WARN", "message": "Mock log: Low battery warning.", "component": "DeviceService", "userId": "user1" }
+  ]
+}

@@ -21,6 +21,7 @@ import { auth, db, storage, type User, getEmailProviderCredential, serverTimesta
 import { useRouter } from 'next/navigation';
 // Corrected import path for UserSettingsFromAPI type
 import type { UserSettings as UserSettingsFromAPI } from '@/backend/src/models/settings'; 
+import { apiClient } from "@/lib/apiClient";
 
 
 const profileFormSchema = z.object({
@@ -51,7 +52,9 @@ const passwordFormSchema = z.object({
     path: ["confirmNewPassword"],
 }).refine(data => {
     if (data.newPassword && data.newPassword.length > 0 && (!data.currentPassword || data.currentPassword.length === 0)) {
-        return false;
+        // This check is only relevant if a user is actually logged in (not guest in mock mode)
+        // For now, the mock auth always has a currentUser if you "log in" with mock credentials
+        return false; 
     }
     return true;
 }, {
@@ -64,11 +67,13 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const router = useRouter();
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
-  const [avatarFile, setAvatarFile] = useState<File | null>(null); // Store the file for upload
+  const [avatarFile, setAvatarFile] = useState<File | null>(null); 
   
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [isLoadingGlobal, setIsLoadingGlobal] = useState(true);
   const [settingsError, setSettingsError] = useState<string | null>(null);
+
+  const isMockMode = process.env.NEXT_PUBLIC_USE_MOCK_MODE === 'true';
 
 
   const profileForm = useForm<z.infer<typeof profileFormSchema>>({
@@ -90,41 +95,44 @@ export default function SettingsPage() {
     defaultValues: { currentPassword: "", newPassword: "", confirmNewPassword: "" },
   });
 
-  // Effect for loading user data and settings
  useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       setIsLoadingGlobal(true);
       if (user) {
-        setFirebaseUser(user as User); // Cast to avoid type issues if mock/real differ slightly
+        setFirebaseUser(user as User);
         profileForm.reset({ name: user.displayName || "", email: user.email || "Not available" });
         setAvatarPreview(user.photoURL);
 
         setSettingsError(null);
         try {
-          // Fetch settings from Firestore or backend API
-          // Using Firestore example:
-          const settingsRef = db.collection("userSettings").doc(user.uid);
-          const settingsSnap = await settingsRef.get();
-          if (settingsSnap.exists()) {
-            const userSettings = settingsSnap.data() as UserSettingsFromAPI;
-            preferencesForm.reset({
+          // Fetch settings
+          // In mock mode, apiClient handles this. Otherwise, it goes to backend.
+          const userSettings = await apiClient<UserSettingsFromAPI>(`/settings/${user.uid || 'user1'}`);
+          if (userSettings && Object.keys(userSettings).length > 0) {
+             preferencesForm.reset({
               theme: userSettings.theme,
               notifications: userSettings.notifications,
               timezone: userSettings.timezone,
             });
+          } else if (isMockMode) {
+             console.log("No user settings found in MOCK API, using defaults.");
+             preferencesForm.reset({ theme: 'system', notifications: { email: true, push: true }, timezone: 'UTC' });
           } else {
-            console.log("No user settings found in DB, using defaults.");
-            // If no settings, could initialize them here with defaults and save
+            // If not mock mode and no settings from API, use defaults and potentially save them
+            console.log("No user settings found in REAL API, using defaults.");
             const defaultSettings = {
-              theme: 'system',
-              notifications: { email: true, push: true },
-              timezone: 'UTC',
-              createdAt: serverTimestamp(), // Use serverTimestamp
-              updatedAt: serverTimestamp(), // Use serverTimestamp
-              userId: user.uid,
+              theme: 'system' as 'system', notifications: { email: true, push: true }, timezone: 'UTC',
             };
             preferencesForm.reset(defaultSettings);
-            // Optionally save defaults to DB: await settingsRef.set(defaultSettings);
+            // Optionally try to save defaults to backend
+            try {
+                await apiClient(`/settings/${user.uid}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(defaultSettings)
+                });
+            } catch (saveError) {
+                console.error("Failed to save default settings to backend:", saveError);
+            }
           }
         } catch (err) {
           const errorMsg = (err as Error).message || "Could not load your preferences.";
@@ -137,14 +145,23 @@ export default function SettingsPage() {
           });
         }
       } else {
-        toast({ title: "Not Authenticated", description: "Please login to access settings.", variant: "destructive" });
-        router.push("/auth/login");
+        // If not in mock mode, and no user, redirect. In mock mode, allow guest view.
+        if (!isMockMode) {
+            toast({ title: "Not Authenticated", description: "Please login to access settings.", variant: "destructive" });
+            router.push("/auth/login");
+        } else {
+            // Mock guest user for settings page
+            setFirebaseUser({ uid: "guest-user", email: "guest@example.com", displayName: "Guest", photoURL: null } as User);
+            profileForm.reset({name: "Guest", email: "guest@example.com"});
+            preferencesForm.reset({ theme: 'system', notifications: { email: false, push: false }, timezone: 'UTC' });
+            setSettingsError("Running in guest mode. Some features are disabled.");
+        }
       }
       setIsLoadingGlobal(false);
     });
      return () => unsubscribe();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router]); // profileForm, preferencesForm removed from deps to avoid re-triggering fetch on form state change
+  }, [router, isMockMode]); 
 
   // Effect for theme changes
   useEffect(() => {
@@ -157,49 +174,39 @@ export default function SettingsPage() {
       } else if (currentTheme === 'light') {
         document.documentElement.classList.add('light');
         localStorage.setItem('theme', 'light');
-      } else { // system
+      } else { 
         localStorage.removeItem('theme'); 
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         if (prefersDark) document.documentElement.classList.add('dark');
-        else document.documentElement.classList.add('light');
+        else document.documentElement.classList.add('light'); // Default to light if system has no preference or error
       }
     }
   }, [preferencesForm.watch('theme'), firebaseUser]);
 
 
   async function onProfileSubmit(values: z.infer<typeof profileFormSchema>) {
-    if (!firebaseUser || !auth.currentUser) { // Check auth.currentUser as well
-        toast({ title: "Error", description: "User not authenticated.", variant: "destructive"});
+    if (!firebaseUser || !auth.currentUser || firebaseUser.uid === "guest-user") { 
+        toast({ title: "Action Not Allowed", description: "Profile updates are disabled for guest users.", variant: "destructive"});
         return;
     }
     profileForm.formState.isSubmitting; 
     try {
         let photoURLToUpdate = firebaseUser.photoURL;
-        if (avatarFile && process.env.NEXT_PUBLIC_USE_MOCK_MODE !== 'true') { // Only upload if not in mock mode for storage
-          // Upload to Firebase Storage (or mock storage)
+        if (avatarFile && !isMockMode) { 
           const storageRef = storage.ref(`avatars/${firebaseUser.uid}/${avatarFile.name}`);
-          const uploadTask = await storageRef.put(avatarFile); // This will use the mock if in mock mode
-          photoURLToUpdate = await uploadTask.ref.getDownloadURL();
-          setAvatarPreview(photoURLToUpdate); // Update preview with final URL
-          setAvatarFile(null); // Clear file after upload
-        } else if (avatarFile && process.env.NEXT_PUBLIC_USE_MOCK_MODE === 'true') {
-            // In mock mode with a file selected, use the local preview URL directly
+          const uploadTask = await storage.uploadBytes(storageRef, avatarFile); 
+          photoURLToUpdate = await storage.getDownloadURL(uploadTask.ref);
+          setAvatarPreview(photoURLToUpdate); 
+          setAvatarFile(null); 
+        } else if (avatarFile && isMockMode) {
             photoURLToUpdate = avatarPreview; 
             setAvatarFile(null);
-            toast({ title: "Avatar Changed (Mock)", description: "Avatar preview updated. In real mode, this would upload."});
+            toast({ title: "Avatar Changed (Mock)", description: "Avatar preview updated. No actual upload in mock mode."});
         }
 
-
-        // Uses conditional firebaseUpdateProfile from lib/firebase.ts
         await auth.updateProfile(auth.currentUser as User, { displayName: values.name, photoURL: photoURLToUpdate });
-        
-        // Update local state for immediate reflection if firebase.ts mock doesn't trigger onAuthStateChanged for profile updates
         setFirebaseUser(prev => prev ? {...prev, displayName: values.name, photoURL: photoURLToUpdate } : null);
-
-        // Optionally, update display name in Firestore user profile document if you store it there too
-        // const userDocRef = db.collection("users").doc(firebaseUser.uid);
-        // await userDocRef.update({ displayName: values.name, photoURL: photoURLToUpdate });
-
+        
         toast({ title: "Profile Updated", description: "Your profile information has been saved." });
     } catch (error: any) {
         console.error("Profile update error:", error);
@@ -208,26 +215,32 @@ export default function SettingsPage() {
   }
 
   async function onPreferencesSubmit(values: z.infer<typeof preferencesFormSchema>) {
-    if (!firebaseUser) {
-      toast({ title: "Error", description: "User not authenticated.", variant: "destructive"});
+    if (!firebaseUser || firebaseUser.uid === "guest-user") {
+      toast({ title: "Action Not Allowed", description: "Preference updates are disabled for guest users.", variant: "destructive"});
       return;
     }
     preferencesForm.formState.isSubmitting; 
     try {
-      // Using Firestore example:
-      const settingsRef = db.collection("userSettings").doc(firebaseUser.uid);
-      const dataToSave: Partial<UserSettingsFromAPI> & {userId: string, updatedAt: any} = {
-        ...values,
-        userId: firebaseUser.uid,
-        updatedAt: serverTimestamp(), // Use serverTimestamp for real Firebase
+      const dataToSave: Partial<UserSettingsFromAPI> = {
+        theme: values.theme,
+        notifications: values.notifications,
+        timezone: values.timezone,
+        updatedAt: isMockMode ? new Date().toISOString() : serverTimestamp(), // Use ISO string for mock, serverTimestamp for real
       };
+      
       // If creating for the first time, also set createdAt
-      const currentSettings = await settingsRef.get();
-      if (!currentSettings.exists()) {
-        (dataToSave as any).createdAt = serverTimestamp();
+      if (!isMockMode) { // Only do this if it's a real backend that might not have the settings yet
+        const currentSettings = await apiClient<UserSettingsFromAPI | null>(`/settings/${firebaseUser.uid}`);
+        if (!currentSettings || Object.keys(currentSettings).length === 0) {
+          (dataToSave as any).createdAt = serverTimestamp();
+        }
       }
 
-      await settingsRef.set(dataToSave, { merge: true }); // Merge to not overwrite createdAt
+
+      await apiClient(`/settings/${firebaseUser.uid}`, {
+        method: 'PUT',
+        body: JSON.stringify(dataToSave)
+      });
 
       toast({ title: "Preferences Updated", description: "Your app preferences have been saved." });
     } catch (error: any) {
@@ -237,8 +250,8 @@ export default function SettingsPage() {
   }
   
   async function onPasswordSubmit(values: z.infer<typeof passwordFormSchema>) {
-    if (!firebaseUser || !firebaseUser.email || !auth.currentUser) {
-        toast({ title: "Error", description: "User not found or email not available.", variant: "destructive" });
+    if (!firebaseUser || !firebaseUser.email || !auth.currentUser || firebaseUser.uid === "guest-user") {
+        toast({ title: "Action Not Allowed", description: "Password changes are disabled for guest users or if email is unavailable.", variant: "destructive" });
         return;
     }
     if (!values.newPassword && !values.currentPassword) {
@@ -256,11 +269,8 @@ export default function SettingsPage() {
 
     passwordForm.formState.isSubmitting;
     try {
-        // Construct credential using the conditionally exported getEmailProviderCredential
         const credential = getEmailProviderCredential(firebaseUser.email, values.currentPassword!);
-        // Reauthenticate
         await auth.reauthenticateWithCredential(auth.currentUser as User, credential);
-        // Update password
         await auth.updatePassword(auth.currentUser as User, values.newPassword!);
 
         toast({ title: "Password Updated", description: "Your password has been changed successfully." });
@@ -268,12 +278,9 @@ export default function SettingsPage() {
     } catch (error: any) {
         console.error("Password change error:", error);
         let userFriendlyMessage = error.message || "Password change failed. Please check your current password.";
-         // Check error.code for Firebase specific errors if not in mock mode
-        if (process.env.NEXT_PUBLIC_USE_MOCK_MODE !== 'true' && (error as any).code === 'auth/wrong-password') {
+        if ((!isMockMode && (error as any).code === 'auth/wrong-password') || (error.message?.includes('wrong-password') || error.message?.includes('Incorrect current password'))) {
              userFriendlyMessage = "Incorrect current password. Please try again.";
-        } else if (error.message?.includes('wrong-password') || error.message?.includes('Incorrect current password')) { // Accommodate mock errors
-            userFriendlyMessage = "Incorrect current password. Please try again.";
-        } else if ((error as any).code === 'auth/too-many-requests' || error.message?.includes("too-many-requests")) {
+        } else if ((!isMockMode && (error as any).code === 'auth/too-many-requests') || error.message?.includes("too-many-requests")) {
             userFriendlyMessage = "Too many attempts. Please try again later.";
         }
         toast({ title: "Password Change Failed", description: userFriendlyMessage, variant: "destructive" });
@@ -287,7 +294,7 @@ export default function SettingsPage() {
         toast({ title: "Image Too Large", description: "Please select an image smaller than 2MB.", variant: "destructive"});
         return;
       }
-      setAvatarFile(file); // Store the file
+      setAvatarFile(file); 
       const reader = new FileReader();
       reader.onloadend = () => {
         setAvatarPreview(reader.result as string);
@@ -297,29 +304,19 @@ export default function SettingsPage() {
   };
 
   const handleDeleteAccount = async () => {
-    if (firebaseUser && auth.currentUser) {
+    if (firebaseUser && auth.currentUser && firebaseUser.uid !== "guest-user") {
         try {
-            console.log("Account deletion requested for user:", firebaseUser.uid);
-            // In a real app, you might re-authenticate before deletion for security.
-            // For mock:
-            const userEmailToDelete = firebaseUser.email;
-            await auth.signOut(auth); // This will call the mock signOut
-
-            if (process.env.NEXT_PUBLIC_USE_MOCK_MODE === 'true' && userEmailToDelete) {
-                 // Accessing mockUserStore might not be possible from here if it's not exported.
-                 // The mockAuth.signOut already sets mockCurrentUserInternal to null.
-                 // Further cleanup of mockUserStore would need that store to be accessible or handled within the mockAuth logic.
-                 console.log(`[Mock] User ${userEmailToDelete} logged out. Store cleanup would happen in a real backend or more complex mock.`);
-            } else if (process.env.NEXT_PUBLIC_USE_MOCK_MODE !== 'true' && auth.currentUser) {
-                // Real Firebase: await auth.currentUser.delete(); 
-                // For demo, we'll just sign out.
+            await auth.signOut(auth); 
+            if (isMockMode && firebaseUser.email) {
+                 // mockUserStore needs to be accessible to delete, or done within mockAuth
+                 console.log(`[Mock] User ${firebaseUser.email} logged out. Account "deletion" simulated.`);
+            } else if (!isMockMode && auth.currentUser) {
+                // Real Firebase: await auth.currentUser.delete(); (Careful with this in dev)
                 console.log("[Real Firebase] Actual account deletion would happen here. For demo, only signing out.");
             }
-
-
             toast({
-                title: "Account Deletion Initiated",
-                description: "You have been logged out. In a real app, your account and data would be scheduled for deletion.",
+                title: "Account Deletion Processed",
+                description: "You have been logged out. In a real app, further steps would occur.",
                 variant: "destructive"
             });
              router.push('/auth/signup'); 
@@ -328,7 +325,7 @@ export default function SettingsPage() {
             toast({ title: "Account Deletion Failed", description: error.message || "Could not delete account.", variant: "destructive" });
         }
     } else {
-         toast({ title: "Error", description: "No user logged in.", variant: "destructive" });
+         toast({ title: "Action Not Allowed", description: "Account deletion is not available for guest users.", variant: "destructive" });
     }
   };
 
@@ -347,6 +344,8 @@ export default function SettingsPage() {
       );
   }
 
+  const isGuest = firebaseUser?.uid === "guest-user";
+
   return (
     <div className="space-y-8 p-4 md:p-6 lg:p-8">
       <div className="flex items-center gap-3">
@@ -354,7 +353,7 @@ export default function SettingsPage() {
         <div>
             <h1 className="text-3xl font-bold">Settings</h1>
             <p className="text-muted-foreground">
-            Manage your account, preferences, and app settings.
+            Manage your account, preferences, and app settings. {isGuest && "(Guest Mode - Some features disabled)"}
             </p>
         </div>
       </div>
@@ -384,10 +383,10 @@ export default function SettingsPage() {
                         <AvatarImage src={avatarPreview || undefined} alt={firebaseUser?.displayName || "User Avatar"} />
                         <AvatarFallback><CurrentUserAvatarFallback/></AvatarFallback>
                         </Avatar>
-                        <Button variant="outline" type="button" onClick={() => document.getElementById('avatar-upload')?.click()}>
+                        <Button variant="outline" type="button" onClick={() => document.getElementById('avatar-upload')?.click()} disabled={isGuest}>
                             <Camera className="mr-2 h-4 w-4" />Change Avatar
                         </Button>
-                        <Input id="avatar-upload" type="file" className="hidden" accept="image/png, image/jpeg, image/webp" onChange={handleAvatarChange} />
+                        <Input id="avatar-upload" type="file" className="hidden" accept="image/png, image/jpeg, image/webp" onChange={handleAvatarChange} disabled={isGuest} />
                     </div>
                     <FormField
                         control={profileForm.control}
@@ -396,7 +395,7 @@ export default function SettingsPage() {
                         <FormItem>
                             <FormLabel>Full Name</FormLabel>
                             <FormControl>
-                            <Input placeholder="Your Name" {...field} />
+                            <Input placeholder="Your Name" {...field} disabled={isGuest || profileForm.formState.isSubmitting} />
                             </FormControl>
                             <FormMessage />
                         </FormItem>
@@ -416,7 +415,7 @@ export default function SettingsPage() {
                         </FormItem>
                         )}
                     />
-                    <Button type="submit" disabled={profileForm.formState.isSubmitting}>
+                    <Button type="submit" disabled={isGuest || profileForm.formState.isSubmitting}>
                         {profileForm.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                         Save Profile
                     </Button>
@@ -436,10 +435,13 @@ export default function SettingsPage() {
                 {(isLoadingGlobal || preferencesForm.formState.isSubmitting) && !settingsError && ( 
                     <div className="flex items-center justify-center p-6"><Loader2 className="h-6 w-6 animate-spin text-primary" /><span className="ml-2">Loading/Saving preferences...</span></div>
                 )}
-                {settingsError && (
+                {settingsError && !isGuest && ( // Only show actual errors if not guest
                     <div className="text-destructive p-4 border border-destructive bg-destructive/10 rounded-md">{settingsError}</div>
                 )}
-                {!isLoadingGlobal && !settingsError && ( 
+                 {isGuest && settingsError && ( // Show guest mode info
+                    <div className="text-muted-foreground p-4 border border-border bg-muted/50 rounded-md">{settingsError}</div>
+                )}
+                {!isLoadingGlobal && (!settingsError || isGuest) && ( 
                 <Form {...preferencesForm}>
                     <form onSubmit={preferencesForm.handleSubmit(onPreferencesSubmit)} className="space-y-6">
                     <FormField
@@ -448,7 +450,7 @@ export default function SettingsPage() {
                         render={({ field }) => (
                         <FormItem>
                             <FormLabel>Theme</FormLabel>
-                             <Select onValueChange={field.onChange} value={field.value}>
+                             <Select onValueChange={field.onChange} value={field.value} disabled={isGuest || preferencesForm.formState.isSubmitting}>
                                 <FormControl>
                                     <SelectTrigger>
                                     <SelectValue placeholder="Select theme" />
@@ -471,7 +473,7 @@ export default function SettingsPage() {
                         render={({ field }) => (
                         <FormItem>
                             <FormLabel>Timezone</FormLabel>
-                            <Select onValueChange={field.onChange} value={field.value}>
+                            <Select onValueChange={field.onChange} value={field.value} disabled={isGuest || preferencesForm.formState.isSubmitting}>
                             <FormControl>
                                 <SelectTrigger>
                                 <SelectValue placeholder="Select your timezone" />
@@ -492,7 +494,7 @@ export default function SettingsPage() {
                         </FormItem>
                         )}
                     />
-                    <Button type="submit" disabled={preferencesForm.formState.isSubmitting}>
+                    <Button type="submit" disabled={isGuest || preferencesForm.formState.isSubmitting}>
                         {preferencesForm.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                         Save Preferences
                     </Button>
@@ -513,10 +515,13 @@ export default function SettingsPage() {
                 {(isLoadingGlobal || preferencesForm.formState.isSubmitting) && !settingsError && (
                      <div className="flex items-center justify-center p-6"><Loader2 className="h-6 w-6 animate-spin text-primary" /><span className="ml-2">Loading/Saving notification settings...</span></div>
                 )}
-                {settingsError && (
+                {settingsError && !isGuest && (
                     <div className="text-destructive p-4 border border-destructive bg-destructive/10 rounded-md">{settingsError}</div>
                 )}
-                {!isLoadingGlobal && !settingsError && (
+                {isGuest && settingsError && (
+                    <div className="text-muted-foreground p-4 border border-border bg-muted/50 rounded-md">{settingsError}</div>
+                )}
+                {!isLoadingGlobal && (!settingsError || isGuest) && (
                     <Form {...preferencesForm}> 
                         <form onSubmit={preferencesForm.handleSubmit(onPreferencesSubmit)} className="space-y-6">
                             <FormField
@@ -534,6 +539,7 @@ export default function SettingsPage() {
                                     <Switch
                                         checked={field.value}
                                         onCheckedChange={field.onChange}
+                                        disabled={isGuest || preferencesForm.formState.isSubmitting}
                                     />
                                     </FormControl>
                                 </FormItem>
@@ -554,12 +560,13 @@ export default function SettingsPage() {
                                     <Switch
                                         checked={field.value}
                                         onCheckedChange={field.onChange}
+                                        disabled={isGuest || preferencesForm.formState.isSubmitting}
                                     />
                                     </FormControl>
                                 </FormItem>
                                 )}
                             />
-                            <Button type="submit" disabled={preferencesForm.formState.isSubmitting}>
+                            <Button type="submit" disabled={isGuest || preferencesForm.formState.isSubmitting}>
                                 {preferencesForm.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                                 Save Notification Settings
                             </Button>
@@ -574,7 +581,7 @@ export default function SettingsPage() {
             <Card className="shadow-md">
                 <CardHeader>
                 <CardTitle>Connected Accounts & Integrations</CardTitle>
-                <CardDescription>Link WakeSync with other services for an enhanced experience.</CardDescription>
+                <CardDescription>Link WakeSync with other services for an enhanced experience. {isGuest && "(Disabled in Guest Mode)"}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                 <Card className="p-4 hover:shadow-lg transition-shadow">
@@ -586,7 +593,7 @@ export default function SettingsPage() {
                         <p className="text-xs text-muted-foreground">Sync sleep, activity, and heart rate data.</p>
                         </div>
                     </div>
-                    <Button variant="outline" onClick={() => toast({title: "Connect Google Fit (Demo)", description:"Integration flow would start here."})}>Connect</Button>
+                    <Button variant="outline" onClick={() => toast({title: "Connect Google Fit (Demo)", description:"Integration flow would start here."})} disabled={isGuest}>Connect</Button>
                     </div>
                 </Card>
                 <Card className="p-4 hover:shadow-lg transition-shadow">
@@ -598,7 +605,7 @@ export default function SettingsPage() {
                             <p className="text-xs text-muted-foreground">Import health data from your Apple devices.</p>
                             </div>
                         </div>
-                        <Button variant="outline" onClick={() => toast({title: "Connect Apple Health (Demo)", description:"Integration flow would start here."})}>Connect</Button>
+                        <Button variant="outline" onClick={() => toast({title: "Connect Apple Health (Demo)", description:"Integration flow would start here."})} disabled={isGuest}>Connect</Button>
                     </div>
                 </Card>
                 <Card className="p-4 hover:shadow-lg transition-shadow">
@@ -610,7 +617,7 @@ export default function SettingsPage() {
                             <p className="text-xs text-muted-foreground">Use your Spotify playlists for wake-up sounds.</p>
                             </div>
                         </div>
-                        <Button variant="outline" onClick={() => toast({title: "Connect Spotify (Demo)", description:"Integration flow would start here."})}>Connect</Button>
+                        <Button variant="outline" onClick={() => toast({title: "Connect Spotify (Demo)", description:"Integration flow would start here."})} disabled={isGuest}>Connect</Button>
                     </div>
                 </Card>
                 <Card className="p-4 hover:shadow-lg transition-shadow">
@@ -622,7 +629,7 @@ export default function SettingsPage() {
                             <p className="text-xs text-muted-foreground">Integrate your calendar for smarter routine suggestions.</p>
                             </div>
                         </div>
-                        <Button variant="outline" onClick={() => toast({title: "Connect Google Calendar (Demo)", description:"Integration flow would start here."})}>Connect</Button>
+                        <Button variant="outline" onClick={() => toast({title: "Connect Google Calendar (Demo)", description:"Integration flow would start here."})} disabled={isGuest}>Connect</Button>
                     </div>
                 </Card>
                 </CardContent>
@@ -633,7 +640,7 @@ export default function SettingsPage() {
             <Card className="shadow-md">
                 <CardHeader>
                 <CardTitle>Security Settings</CardTitle>
-                <CardDescription>Manage your account security.</CardDescription>
+                <CardDescription>Manage your account security. {isGuest && "(Disabled in Guest Mode)"}</CardDescription>
                 </CardHeader>
                 <CardContent>
                 <Form {...passwordForm}>
@@ -644,7 +651,7 @@ export default function SettingsPage() {
                             render={({ field }) => (
                             <FormItem>
                                 <FormLabel>Current Password</FormLabel>
-                                <FormControl><Input type="password" {...field} placeholder="Enter your current password" /></FormControl>
+                                <FormControl><Input type="password" {...field} placeholder="Enter your current password" disabled={isGuest || passwordForm.formState.isSubmitting} /></FormControl>
                                 <FormMessage />
                             </FormItem>
                             )}
@@ -655,7 +662,7 @@ export default function SettingsPage() {
                             render={({ field }) => (
                             <FormItem>
                                 <FormLabel>New Password</FormLabel>
-                                <FormControl><Input type="password" {...field} placeholder="Enter new password (min. 8 characters)" /></FormControl>
+                                <FormControl><Input type="password" {...field} placeholder="Enter new password (min. 8 characters)" disabled={isGuest || passwordForm.formState.isSubmitting} /></FormControl>
                                 <FormMessage />
                             </FormItem>
                             )}
@@ -666,12 +673,12 @@ export default function SettingsPage() {
                             render={({ field }) => (
                             <FormItem>
                                 <FormLabel>Confirm New Password</FormLabel>
-                                <FormControl><Input type="password" {...field} placeholder="Confirm your new password" /></FormControl>
+                                <FormControl><Input type="password" {...field} placeholder="Confirm your new password" disabled={isGuest || passwordForm.formState.isSubmitting} /></FormControl>
                                 <FormMessage />
                             </FormItem>
                             )}
                         />
-                        <Button type="submit" disabled={passwordForm.formState.isSubmitting}>
+                        <Button type="submit" disabled={isGuest || passwordForm.formState.isSubmitting}>
                             {passwordForm.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                             Change Password
                         </Button>
@@ -680,7 +687,7 @@ export default function SettingsPage() {
                 <div className="mt-8 border-t pt-6">
                     <h3 className="text-lg font-medium">Two-Factor Authentication (2FA)</h3>
                     <p className="text-sm text-muted-foreground mb-3">Add an extra layer of security to your account.</p>
-                    <Button variant="outline" onClick={() => toast({title: "Enable 2FA (Demo)", description:"2FA setup flow would start here."})}>Enable 2FA</Button>
+                    <Button variant="outline" onClick={() => toast({title: "Enable 2FA (Demo)", description:"2FA setup flow would start here."})} disabled={isGuest}>Enable 2FA</Button>
                 </div>
                 <div className="mt-8 border-t pt-6">
                     <h3 className="text-lg font-medium">Active Sessions</h3>
@@ -691,7 +698,7 @@ export default function SettingsPage() {
                                 <p className="font-medium">Chrome on Mac OS X (Current)</p>
                                 <p className="text-xs text-muted-foreground">Last active: Just now &bull; IP: 123.45.67.89</p>
                             </div>
-                            <Button variant="link" size="sm" className="text-destructive hover:text-destructive/80" onClick={() => toast({title:"Session Terminated (Demo)"})}>Log out</Button>
+                            <Button variant="link" size="sm" className="text-destructive hover:text-destructive/80" onClick={() => toast({title:"Session Terminated (Demo)"})} disabled={isGuest}>Log out</Button>
                         </div>
                         <Separator />
                         <div className="flex items-center justify-between">
@@ -699,10 +706,10 @@ export default function SettingsPage() {
                                 <p className="font-medium">WakeSync iOS App</p>
                                 <p className="text-xs text-muted-foreground">Last active: 2 days ago &bull; IP: 98.76.54.32</p>
                             </div>
-                            <Button variant="link" size="sm" className="text-destructive hover:text-destructive/80" onClick={() => toast({title:"Session Terminated (Demo)"})}>Log out</Button>
+                            <Button variant="link" size="sm" className="text-destructive hover:text-destructive/80" onClick={() => toast({title:"Session Terminated (Demo)"})} disabled={isGuest}>Log out</Button>
                         </div>
                     </Card>
-                    <Button variant="outline" className="mt-3" onClick={() => toast({title:"Logged out all other sessions (Demo)"})}>Log Out All Other Sessions</Button>
+                    <Button variant="outline" className="mt-3" onClick={() => toast({title:"Logged out all other sessions (Demo)"})} disabled={isGuest}>Log Out All Other Sessions</Button>
                 </div>
                 </CardContent>
             </Card>
@@ -712,15 +719,15 @@ export default function SettingsPage() {
             <Card className="shadow-md">
                 <CardHeader>
                 <CardTitle>Billing & Subscription</CardTitle>
-                <CardDescription>Manage your WakeSync subscription and payment methods.</CardDescription>
+                <CardDescription>Manage your WakeSync subscription and payment methods. {isGuest && "(Demo View - No real billing)"}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                     <div>
-                        <h3 className="text-md font-medium">Current Plan: <span className="text-primary">Pro Monthly</span></h3>
-                        <p className="text-sm text-muted-foreground">Renews on August 28, 2024. $9.99/month.</p>
+                        <h3 className="text-md font-medium">Current Plan: <span className="text-primary">{isGuest ? "Free Demo" : "Pro Monthly"}</span></h3>
+                        <p className="text-sm text-muted-foreground">{isGuest ? "Explore all features with our demo." : "Renews on August 28, 2024. $9.99/month."}</p>
                         <div className="flex gap-2 mt-2">
-                            <Button variant="outline" onClick={() => toast({title: "Change Plan (Demo)", description:"Plan selection would be shown here."})}>Change Plan</Button>
-                            <Button variant="link" className="text-destructive hover:text-destructive/80" onClick={() => toast({title: "Cancel Subscription (Demo)", description:"Subscription cancellation flow."})}>Cancel Subscription</Button>
+                            <Button variant="outline" onClick={() => toast({title: "Change Plan (Demo)", description:"Plan selection would be shown here."})} disabled={isGuest}>Change Plan</Button>
+                            <Button variant="link" className="text-destructive hover:text-destructive/80" onClick={() => toast({title: "Cancel Subscription (Demo)", description:"Subscription cancellation flow."})} disabled={isGuest}>Cancel Subscription</Button>
                         </div>
                     </div>
                     <div className="border-t pt-6">
@@ -728,17 +735,17 @@ export default function SettingsPage() {
                         <div className="flex items-center gap-3 mt-2 p-3 border rounded-md bg-secondary/50">
                             <CreditCard className="h-6 w-6 text-muted-foreground"/>
                             <div>
-                                <span className="font-medium">Visa ending in **** 1234</span>
-                                <p className="text-xs text-muted-foreground">Expires 12/2026</p>
+                                <span className="font-medium">{isGuest ? "N/A (Demo Mode)" : "Visa ending in **** 1234"}</span>
+                                <p className="text-xs text-muted-foreground">{isGuest ? "No payment method required for demo." : "Expires 12/2026"}</p>
                             </div>
-                            <Button variant="ghost" size="sm" className="ml-auto hover:bg-muted" onClick={() => toast({title: "Edit Payment (Demo)", description:"Payment method update form."})}>Edit</Button>
+                            <Button variant="ghost" size="sm" className="ml-auto hover:bg-muted" onClick={() => toast({title: "Edit Payment (Demo)", description:"Payment method update form."})} disabled={isGuest}>Edit</Button>
                         </div>
-                        <Button variant="outline" className="mt-2" onClick={() => toast({title: "Add Payment Method (Demo)", description:"Form to add new payment method."})}>Add New Payment Method</Button>
+                        <Button variant="outline" className="mt-2" onClick={() => toast({title: "Add Payment Method (Demo)", description:"Form to add new payment method."})} disabled={isGuest}>Add New Payment Method</Button>
                     </div>
                     <div className="border-t pt-6">
                         <h3 className="text-md font-medium">Billing History</h3>
-                        <p className="text-sm text-muted-foreground">No invoices yet. Your first invoice will appear here after your first billing cycle.</p>
-                         <Button variant="link" size="sm" className="mt-1 px-0" onClick={() => toast({title:"View All Invoices (Demo)"})}>View All Invoices</Button>
+                        <p className="text-sm text-muted-foreground">{isGuest ? "No billing history in demo mode." : "No invoices yet. Your first invoice will appear here after your first billing cycle."}</p>
+                         <Button variant="link" size="sm" className="mt-1 px-0" onClick={() => toast({title:"View All Invoices (Demo)"})} disabled={isGuest}>View All Invoices</Button>
                     </div>
                 </CardContent>
             </Card>
@@ -751,7 +758,7 @@ export default function SettingsPage() {
             <CardContent>
                 <AlertDialog>
                     <AlertDialogTrigger asChild>
-                        <Button variant="destructive" disabled={!firebaseUser}><Trash2 className="mr-2 h-4 w-4"/>Delete Account</Button>
+                        <Button variant="destructive" disabled={!firebaseUser || isGuest}><Trash2 className="mr-2 h-4 w-4"/>Delete Account</Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                         <AlertDialogHeader>
@@ -777,4 +784,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-

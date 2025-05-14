@@ -1,0 +1,50 @@
+
+{
+  "user1": {
+    "userId": "user1",
+    "selectedFloor": "Ground Floor",
+    "rooms": [
+      {
+        "id": "fp-lr-user1",
+        "name": "User1 Living Room",
+        "x": 10,
+        "y": 10,
+        "width": 40,
+        "height": 35,
+        "devices": ["light001", "tv001"]
+      },
+      {
+        "id": "fp-k-user1",
+        "name": "User1 Kitchen",
+        "x": 55,
+        "y": 15,
+        "width": 30,
+        "height": 25,
+        "devices": ["speaker001"]
+      }
+    ],
+    "placedDevices": [
+      {
+        "id": "light001",
+        "x": 15,
+        "y": 15,
+        "width": 7,
+        "height": 7
+      },
+      {
+        "id": "tv001",
+        "x": 25,
+        "y": 20,
+        "width": 7,
+        "height": 7
+      },
+      {
+        "id": "speaker001",
+        "x": 60,
+        "y": 20,
+        "width": 7,
+        "height": 7
+      }
+    ]
+  }
+}

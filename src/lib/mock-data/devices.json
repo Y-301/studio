@@ -1,0 +1,90 @@
+
+[
+  {
+    "id": "light001",
+    "userId": "user1",
+    "name": "Living Room Lamp",
+    "type": "light",
+    "status": "off",
+    "settings": { "brightness": 0 },
+    "room": "Living Room",
+    "connectionDetails": "cloud-id-xyz",
+    "dataAiHint": "table lamp",
+    "createdAt": "2024-07-01T09:00:00.000Z",
+    "updatedAt": "2024-07-15T10:30:00.000Z"
+  },
+  {
+    "id": "thermostat001",
+    "userId": "user1",
+    "name": "Main Thermostat",
+    "type": "thermostat",
+    "status": "20",
+    "settings": { "temperature": 20 },
+    "room": "Hallway",
+    "connectionDetails": "ip:192.168.1.100",
+    "dataAiHint": "wall thermostat",
+    "createdAt": "2024-07-01T09:05:00.000Z",
+    "updatedAt": "2024-07-15T11:00:00.000Z"
+  },
+  {
+    "id": "speaker001",
+    "userId": "user1",
+    "name": "Kitchen Speaker",
+    "type": "speaker",
+    "status": "off",
+    "settings": { "volume": 0, "source": "spotify" },
+    "room": "Kitchen",
+    "connectionDetails": "mac:AA:BB:CC:DD:EE:FF",
+    "dataAiHint": "bluetooth speaker",
+    "createdAt": "2024-07-02T10:10:00.000Z",
+    "updatedAt": "2024-07-14T15:20:00.000Z"
+  },
+  {
+    "id": "blinds001",
+    "userId": "user1",
+    "name": "Bedroom Blinds",
+    "type": "blinds",
+    "status": "closed",
+    "settings": { "position": 0 },
+    "room": "Bedroom",
+    "dataAiHint": "window blinds",
+    "createdAt": "2024-07-03T11:00:00.000Z",
+    "updatedAt": "2024-07-15T08:00:00.000Z"
+  },
+  {
+    "id": "tv001",
+    "userId": "user1",
+    "name": "Living Room TV",
+    "type": "tv",
+    "status": "off",
+    "settings": { "inputSource": "HDMI1", "volume": 25 },
+    "room": "Living Room",
+    "dataAiHint": "smart television",
+    "createdAt": "2024-07-05T18:00:00.000Z",
+    "updatedAt": "2024-07-15T20:00:00.000Z"
+  },
+  {
+    "id": "fan001",
+    "userId": "user1",
+    "name": "Office Ceiling Fan",
+    "type": "fan",
+    "status": "off",
+    "settings": { "speed": "low" },
+    "room": "Office",
+    "dataAiHint": "ceiling fan",
+    "createdAt": "2024-07-06T14:00:00.000Z",
+    "updatedAt": "2024-07-15T09:15:00.000Z"
+  },
+   {
+    "id": "sensor001",
+    "userId": "user1",
+    "name": "Nursery Temp Sensor",
+    "type": "sensor",
+    "status": "21°C",
+    "settings": { "last_reading": 21, "unit": "C" },
+    "room": "Nursery",
+    "dataAiHint": "temperature sensor",
+    "createdAt": "2024-07-10T09:00:00.000Z",
+    "updatedAt": "2024-07-15T14:30:00.000Z"
+  }
+]

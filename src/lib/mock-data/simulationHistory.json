@@ -1,0 +1,7 @@
+
+{
+  "history": [
+    { "startTime": "2024-07-20T08:00:00.000Z", "durationMinutes": 30, "intensity": "medium" },
+    { "startTime": "2024-07-19T07:30:00.000Z", "durationMinutes": 25, "intensity": "low" }
+  ]
+}

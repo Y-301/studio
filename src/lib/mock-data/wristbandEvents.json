@@ -1,0 +1,8 @@
+
+{
+  "events": [
+    { "timestamp": "2024-07-20T09:00:00.000Z", "userId": "user1", "eventType": "heart_rate_update", "details": { "value": 72, "unit": "bpm" } },
+    { "timestamp": "2024-07-20T08:30:00.000Z", "userId": "user1", "eventType": "steps_update", "details": { "totalToday": 1200 } },
+    { "timestamp": "2024-07-20T07:00:00.000Z", "userId": "user1", "eventType": "wake_up", "details": { "reason": "natural" } }
+  ]
+}

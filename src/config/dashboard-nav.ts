@@ -7,12 +7,12 @@ import {
   Watch, 
   BarChart3, 
   FileText, 
-  SettingsIcon,
+  Settings as SettingsIcon, // Renamed to avoid conflict
   Database,
   Workflow,
   BrainCircuit,
   ClipboardCheck,
-  Link as LinkIcon // Added for Integrations
+  Link as LinkIconLucide // Renamed to avoid conflict
 } from 'lucide-react';
 
 export interface NavItem {
@@ -29,6 +29,11 @@ export interface NavItemGroup {
   items: NavItem[];
 }
 
+// When NEXT_PUBLIC_USE_MOCK_MODE is true, we generally want all nav items to be enabled
+// for demonstration purposes, even if a "user" isn't technically logged into a real backend.
+// The auth state in mock mode might be null if no mock user is "logged in".
+const isMockMode = process.env.NEXT_PUBLIC_USE_MOCK_MODE === 'true';
+
 export const dashboardNavItems: NavItemGroup[] = [
   {
     items: [
@@ -36,52 +41,55 @@ export const dashboardNavItems: NavItemGroup[] = [
         title: 'Dashboard',
         href: '/dashboard',
         icon: LayoutDashboard,
+        disabled: false, // Dashboard should always be accessible
       },
       {
         title: 'Devices',
         href: '/dashboard/devices',
         icon: Smartphone,
-        disabled: false, 
+        disabled: isMockMode ? false : undefined, // Enabled in mock, auth-dependent otherwise
       },
       {
         title: 'Routines',
         href: '/dashboard/routines',
         icon: ListChecks,
-        disabled: false, 
+        disabled: isMockMode ? false : undefined, 
       },
       {
         title: 'Simulation',
         href: '/dashboard/simulation',
         icon: Waypoints, 
+        disabled: false, // Simulation page might be fine for guests in mock
       },
       {
         title: 'Wristband',
         href: '/dashboard/wristband',
         icon: Watch,
-        disabled: false, 
+        disabled: isMockMode ? false : undefined, 
       },
       {
         title: 'Analytics',
         href: '/dashboard/analytics',
         icon: BarChart3,
+        disabled: false, // Analytics can show mock data
       },
       {
         title: 'Logs',
         href: '/dashboard/logs',
         icon: FileText,
-        disabled: false, 
+        disabled: isMockMode ? false : undefined, 
       },
       {
         title: 'Settings',
-        href: '/dashboard/settings',
+        href: '/dashboard/settings', // Changed from /auth/settings to /dashboard/settings
         icon: SettingsIcon,
-        disabled: false, 
+        disabled: isMockMode ? false : undefined, 
       },
        { 
         title: 'Integrations',
-        href: '/dashboard/settings#integrations',
-        icon: LinkIcon,
-        disabled: false, 
+        href: '/dashboard/settings#integrations', // Points to a section within settings
+        icon: LinkIconLucide,
+        disabled: isMockMode ? false : undefined, 
       },
     ],
   },
@@ -92,21 +100,25 @@ export const dashboardNavItems: NavItemGroup[] = [
         title: 'Datasets',
         href: '/dashboard/datascience/datasets',
         icon: Database,
+        disabled: false, // Allow access in mock for demo
       },
       {
         title: 'Data Studio',
         href: '/dashboard/datascience/datastudio',
         icon: Workflow,
+        disabled: false,
       },
       {
         title: 'Model Training',
         href: '/dashboard/datascience/modeltraining',
         icon: BrainCircuit,
+        disabled: false,
       },
       {
         title: 'Model Evaluation',
         href: '/dashboard/datascience/modelevaluation',
         icon: ClipboardCheck,
+        disabled: false,
       },
     ],
   },
