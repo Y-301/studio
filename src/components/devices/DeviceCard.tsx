@@ -5,10 +5,10 @@ import type { LucideIcon } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
-import { Settings2, Palette, Volume2, Sun, Zap, Power, Info } from "lucide-react"; // Added Zap, Power, Info
+import { Settings2, Palette, Volume2, Sun, Zap, Power, Info } from "lucide-react";
 import React from "react";
 import { Slider } from "@/components/ui/slider";
-import { useToast } from "@/hooks/use-toast"; 
+import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
 interface DeviceCardProps {
@@ -16,7 +16,7 @@ interface DeviceCardProps {
   name: string;
   type: string;
   status: string;
-  icon: LucideIcon; // Now correctly typed as LucideIcon
+  icon: LucideIcon;
   room?: string;
   dataAiHint?: string;
   brightness?: number;
@@ -25,22 +25,23 @@ interface DeviceCardProps {
   onVolumeChange?: (value: number) => void;
   color?: string;
   onColorChange?: () => void;
-  onToggle?: (isOn: boolean) => void; 
-  onSimulationBrightnessChange?: (value: number) => void; 
-  onSimulationVolumeChange?: (value: number) => void; 
-  connectionDetails?: string; 
-  settings?: Record<string, any>; // To hold diverse settings like thermostat temp
+  onToggle?: (isOn: boolean) => void;
+  onSimulationBrightnessChange?: (value: number) => void;
+  onSimulationVolumeChange?: (value: number) => void;
+  connectionDetails?: string;
+  settings?: Record<string, any>;
 }
 
 export type Device = DeviceCardProps;
 
-export function DeviceCard({ 
-  id, 
-  name, 
-  type, 
-  status, 
-  icon: Icon, // Renamed prop to Icon for clarity
-  room, 
+// Wrap the functional component with React.memo
+const DeviceCardComponent = React.memo(function DeviceCard({
+  id,
+  name,
+  type,
+  status,
+  icon: Icon,
+  room,
   dataAiHint,
   brightness,
   onBrightnessChange,
@@ -52,12 +53,11 @@ export function DeviceCard({
   onSimulationVolumeChange,
   settings,
 }: DeviceCardProps) {
-  const { toast } = useToast(); 
-  
-  // Determine initial on state based on type and status
+  const { toast } = useToast();
+
   const getIsOn = (currentType: string, currentStatus: string) => {
     if (currentType === "thermostat") {
-      return parseInt(currentStatus) > 0 && !isNaN(parseInt(currentStatus)); // Assuming temp > 0 means on
+      return parseInt(currentStatus) > 0 && !isNaN(parseInt(currentStatus));
     }
     return currentStatus?.toLowerCase() === "on";
   };
@@ -83,7 +83,7 @@ export function DeviceCard({
         toast({title: "Info", description: `Toggling for '${type}' type devices might be handled differently or not applicable directly via a simple switch.`})
     }
   };
-  
+
   const isToggleable = type === "light" || type === "speaker" || type === "switch" || type === "fan" || type === "tv";
 
   const handleBrightnessSliderChange = onSimulationBrightnessChange || onBrightnessChange;
@@ -100,7 +100,7 @@ export function DeviceCard({
     <Card className={cn(
         "flex flex-col justify-between shadow-md hover:shadow-xl transition-shadow duration-300 group",
         isOn && (type === "light" || type === "speaker") && "bg-primary/10 dark:bg-primary/20 border-primary/30",
-        isOn && type === "thermostat" && "bg-destructive/10 dark:bg-destructive/20 border-destructive/30" // Example for thermostat
+        isOn && type === "thermostat" && "bg-destructive/10 dark:bg-destructive/20 border-destructive/30"
       )}>
       <CardHeader className="pb-2">
         <div className="flex justify-between items-start">
@@ -141,15 +141,13 @@ export function DeviceCard({
             <Slider id={`volume-${id}`} defaultValue={[volume]} max={100} step={1} onValueChange={(value) => handleVolumeSliderChange(value[0])} />
           </div>
         )}
-        
-        {/* Placeholder for other device type specific controls if needed */}
+
         {type === "thermostat" && (
             <div className="text-xs text-muted-foreground self-center">Target: {settings?.temperature}°C</div>
         )}
          {type === "blinds" && (
             <div className="text-xs text-muted-foreground self-center">Position: {settings?.position || 0}% open</div>
         )}
-
 
         <Button variant="ghost" size="sm" className="mt-auto text-muted-foreground hover:text-primary self-center text-xs" onClick={() => toast({title: `Configure ${name} (Demo)`, description:"Device specific configuration modal would open here."})}>
           <Settings2 className="h-3 w-3 mr-1" />
@@ -158,5 +156,9 @@ export function DeviceCard({
       </CardContent>
     </Card>
   );
-}
+});
 
+DeviceCardComponent.displayName = "DeviceCard";
+
+export { DeviceCardComponent as DeviceCard };
+export type { Device }; // Keep Device type export (already here, just confirming)
