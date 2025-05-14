@@ -1,19 +1,25 @@
+
 // src/lib/apiClient.ts
 import { auth, type User } from './firebase';
 
 // Import mock data
-// Note: Adjust paths if your mock data structure is different or evolves
-import mockUser1Devices from './mock-data/devices.json';
-import mockUser1Routines from './mock-data/routines.json';
-import mockUser1FloorPlanRoot from './mock-data/floorplan.json'; // This contains { user1: { ... } }
-const mockUser1FloorPlan = (mockUser1FloorPlanRoot as any).user1;
-import mockDashboardSummaryData from './mock-data/dashboardSummary.json';
-import mockUser1SettingsRoot from './mock-data/settings.json'; // This contains { user1: { ... } }
-const mockUser1Settings = (mockUser1SettingsRoot as any).user1;
-import mockAnalyticsSummaryData from './mock-data/analyticsSummary.json';
-import mockSimulationHistoryData from './mock-data/simulationHistory.json';
-import mockWristbandEventsData from './mock-data/wristbandEvents.json';
-import mockLogsData from './mock-data/logs.json';
+import initialMockUser1Devices from './mock-data/devices.json';
+import initialMockUser1Routines from './mock-data/routines.json'; // Renamed to indicate it's the initial state
+import initialMockUser1FloorPlanRoot from './mock-data/floorplan.json';
+const initialMockUser1FloorPlan = (initialMockUser1FloorPlanRoot as any).user1;
+import initialMockDashboardSummaryData from './mock-data/dashboardSummary.json';
+import initialMockUser1SettingsRoot from './mock-data/settings.json';
+const initialMockUser1Settings = (initialMockUser1SettingsRoot as any).user1;
+import initialMockAnalyticsSummaryData from './mock-data/analyticsSummary.json';
+import initialMockSimulationHistoryData from './mock-data/simulationHistory.json';
+import initialMockWristbandEventsData from './mock-data/wristbandEvents.json';
+import initialMockLogsData from './mock-data/logs.json';
+
+// For stateful mocks (especially routines)
+let currentMockUser1Routines = JSON.parse(JSON.stringify(initialMockUser1Routines));
+let currentMockUser1Devices = JSON.parse(JSON.stringify(initialMockUser1Devices));
+let currentMockUser1FloorPlan = JSON.parse(JSON.stringify(initialMockUser1FloorPlan));
+let currentMockUser1Settings = JSON.parse(JSON.stringify(initialMockUser1Settings));
 
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001/api';
@@ -43,37 +49,44 @@ export async function apiClient<T>(endpoint: string, options: RequestInit = {}):
 
   if (isMockMode && (options.method === 'GET' || !options.method)) {
     console.log(`[Mock API Client] GET ${endpoint}`);
-    // Assuming 'user1' for all mock data access for simplicity
     if (endpoint === '/devices') {
-      return Promise.resolve(mockUser1Devices.filter(d => d.userId === 'user1') as T);
+      return Promise.resolve(currentMockUser1Devices.filter((d: any) => d.userId === 'user1') as T);
     }
     if (endpoint === '/routines') {
-      return Promise.resolve(mockUser1Routines.filter(r => r.userId === 'user1') as T);
+      return Promise.resolve(currentMockUser1Routines.filter((r: any) => r.userId === 'user1') as T);
     }
     if (endpoint === '/simulation/floorplan') {
-      return Promise.resolve(mockUser1FloorPlan as T);
+      return Promise.resolve(currentMockUser1FloorPlan as T);
     }
     if (endpoint.startsWith('/dashboard/summary')) {
-      return Promise.resolve(mockDashboardSummaryData as T);
+      // For summary, potentially recalculate based on currentMockUser1Devices/Routines if needed
+      const summaryData = {
+        ...initialMockDashboardSummaryData,
+        totalDevices: currentMockUser1Devices.filter((d:any) => d.userId === 'user1').length,
+        activeDevices: currentMockUser1Devices.filter((d:any) => d.userId === 'user1' && (d.status?.toLowerCase() === 'on' || (d.type === 'thermostat' && parseInt(d.status) > 0))).length,
+        totalRoutines: currentMockUser1Routines.filter((r:any) => r.userId === 'user1').length,
+        activeRoutines: currentMockUser1Routines.filter((r:any) => r.userId === 'user1' && r.isEnabled).length,
+      };
+      return Promise.resolve(summaryData as T);
     }
-    if (endpoint === ('/settings/user1')) { // Mock only for user1 settings
-        return Promise.resolve(mockUser1Settings as T);
+    if (endpoint === ('/settings/user1')) {
+        return Promise.resolve(currentMockUser1Settings as T);
     }
     if (endpoint.startsWith('/analytics/summary')) {
-       return Promise.resolve(mockAnalyticsSummaryData as T);
+       return Promise.resolve(initialMockAnalyticsSummaryData as T);
      }
      if (endpoint.startsWith('/simulations/history')) {
-       return Promise.resolve(mockSimulationHistoryData as T);
+       return Promise.resolve(initialMockSimulationHistoryData as T);
      }
-      if (endpoint.startsWith('/wristband/events')) { // Corrected from /wristband/event
-        return Promise.resolve(mockWristbandEventsData as T);
+      if (endpoint.startsWith('/wristband/events')) {
+        return Promise.resolve(initialMockWristbandEventsData as T);
       }
        if (endpoint.startsWith('/logs')) {
-         return Promise.resolve(mockLogsData as T);
+         return Promise.resolve(initialMockLogsData as T);
        }
 
     console.warn(`[Mock API Client] No specific mock handler for GET ${endpoint}. Returning empty object/array.`);
-    return Promise.resolve((endpoint.includes('[]') ? [] : {}) as T); // Basic heuristic
+    return Promise.resolve((endpoint.includes('[]') ? [] : {}) as T);
   }
 
   if (isMockMode && (options.method === 'POST' || options.method === 'PUT' || options.method === 'DELETE')) {
@@ -83,36 +96,78 @@ export async function apiClient<T>(endpoint: string, options: RequestInit = {}):
     const requestBody = options.body ? JSON.parse(options.body as string) : {};
 
     if (options.method === 'POST' && endpoint === '/devices') {
-        mockResponseData = { ...requestBody, id: `mock-device-${Date.now()}`, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), userId: 'user1' };
+        const newDevice = { ...requestBody, id: `mock-device-${Date.now()}`, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), userId: 'user1' };
+        currentMockUser1Devices.push(newDevice);
+        mockResponseData = newDevice;
     } else if (options.method === 'PUT' && endpoint.startsWith('/devices/')) {
         const deviceId = endpoint.split('/').pop();
-        mockResponseData = { ...requestBody, id: deviceId, updatedAt: new Date().toISOString(), userId: 'user1' };
-    } else if (options.method === 'POST' && endpoint === '/devices/${deviceId}/control') {
-        const deviceId = endpoint.split('/')[2];
-        // Find device in mock and update its status/settings locally for better demo
-        const deviceIndex = mockUser1Devices.findIndex(d => d.id === deviceId);
+        const deviceIndex = currentMockUser1Devices.findIndex((d: any) => d.id === deviceId);
         if (deviceIndex > -1) {
-            mockUser1Devices[deviceIndex] = { ...mockUser1Devices[deviceIndex], ...requestBody, status: requestBody.status || mockUser1Devices[deviceIndex].status, settings: {...mockUser1Devices[deviceIndex].settings, ...requestBody.settings}, updatedAt: new Date().toISOString() };
-            mockResponseData = mockUser1Devices[deviceIndex];
+            currentMockUser1Devices[deviceIndex] = { ...currentMockUser1Devices[deviceIndex], ...requestBody, updatedAt: new Date().toISOString() };
+            mockResponseData = currentMockUser1Devices[deviceIndex];
+        } else {
+            mockResponseData = { message: "Device not found for update (mock)" };
+        }
+    } else if (options.method === 'POST' && endpoint.match(/\/devices\/[^/]+\/control/)) {
+        const deviceId = endpoint.split('/')[2];
+        const deviceIndex = currentMockUser1Devices.findIndex((d: any) => d.id === deviceId);
+        if (deviceIndex > -1) {
+            const existingDevice = currentMockUser1Devices[deviceIndex];
+            const newStatus = requestBody.status !== undefined ? requestBody.status : existingDevice.status;
+            const newSettings = requestBody.settings ? { ...existingDevice.settings, ...requestBody.settings } : existingDevice.settings;
+            
+            currentMockUser1Devices[deviceIndex] = { ...existingDevice, status: newStatus, settings: newSettings, updatedAt: new Date().toISOString() };
+            mockResponseData = currentMockUser1Devices[deviceIndex];
         } else {
              mockResponseData = { message: `Mock device ${deviceId} not found for control`};
         }
     } else if (options.method === 'POST' && endpoint === '/routines') {
-        mockResponseData = { ...requestBody, id: `mock-routine-${Date.now()}`, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), userId: 'user1' };
+        const newRoutine = {
+            ...requestBody,
+            id: `mock-routine-${Date.now()}`,
+            userId: 'user1',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            lastRun: null,
+        };
+        currentMockUser1Routines.push(newRoutine);
+        mockResponseData = newRoutine;
     } else if (options.method === 'PUT' && endpoint.startsWith('/routines/')) {
         const routineId = endpoint.split('/').pop();
-        mockResponseData = { ...requestBody, id: routineId, updatedAt: new Date().toISOString(), userId: 'user1' };
-    } else if (options.method === 'POST' && endpoint.includes('/trigger')) { // for triggering routines
-        mockResponseData = { message: `Routine trigger successful for ${endpoint} (mock)`};
+        const routineIndex = currentMockUser1Routines.findIndex((r: any) => r.id === routineId);
+        if (routineIndex > -1) {
+            currentMockUser1Routines[routineIndex] = { ...currentMockUser1Routines[routineIndex], ...requestBody, updatedAt: new Date().toISOString() };
+            mockResponseData = currentMockUser1Routines[routineIndex];
+        } else {
+            mockResponseData = { message: "Routine not found for update (mock)" };
+        }
+    } else if (options.method === 'DELETE' && endpoint.startsWith('/routines/')) {
+        const routineId = endpoint.split('/').pop();
+        const initialLength = currentMockUser1Routines.length;
+        currentMockUser1Routines = currentMockUser1Routines.filter((r: any) => r.id !== routineId);
+        if (currentMockUser1Routines.length < initialLength) {
+            mockResponseData = { message: `Routine ${routineId} deleted (mock)` };
+        } else {
+            mockResponseData = { message: `Routine ${routineId} not found for deletion (mock)` };
+        }
+    } else if (options.method === 'POST' && endpoint.match(/\/routines\/[^/]+\/trigger/)) {
+        const routineId = endpoint.split('/')[2];
+        const routineIndex = currentMockUser1Routines.findIndex((r: any) => r.id === routineId);
+        if (routineIndex > -1) {
+            currentMockUser1Routines[routineIndex].lastRun = new Date().toISOString();
+             mockResponseData = { message: `Routine ${routineId} triggered successfully (mock)`};
+        } else {
+            mockResponseData = { message: `Routine ${routineId} not found for trigger (mock)`};
+        }
     } else if (options.method === 'POST' && endpoint === '/simulation/floorplan') {
-        console.log("[Mock API Client] Floor plan data received (not persisted in frontend mock):", requestBody);
-        mockResponseData = { message: "Floor plan saved (mock)", data: requestBody };
+        currentMockUser1FloorPlan = { ...requestBody, userId: 'user1' }; // Assuming requestBody is the full plan
+        mockResponseData = { message: "Floor plan saved (mock)", data: currentMockUser1FloorPlan };
     } else if (options.method === 'PUT' && endpoint.startsWith('/settings/user1')) {
-        mockUser1Settings.theme = requestBody.theme ?? mockUser1Settings.theme;
-        mockUser1Settings.notifications = requestBody.notifications ?? mockUser1Settings.notifications;
-        mockUser1Settings.timezone = requestBody.timezone ?? mockUser1Settings.timezone;
-        mockUser1Settings.updatedAt = new Date().toISOString();
-        mockResponseData = { ...mockUser1Settings };
+        currentMockUser1Settings.theme = requestBody.theme ?? currentMockUser1Settings.theme;
+        currentMockUser1Settings.notifications = requestBody.notifications ?? currentMockUser1Settings.notifications;
+        currentMockUser1Settings.timezone = requestBody.timezone ?? currentMockUser1Settings.timezone;
+        currentMockUser1Settings.updatedAt = new Date().toISOString();
+        mockResponseData = { ...currentMockUser1Settings };
     }
 
 
@@ -142,7 +197,7 @@ export async function apiClient<T>(endpoint: string, options: RequestInit = {}):
     throw new Error(errorData.message || `API request failed: ${response.status}`);
   }
 
-  if (response.status === 204) {
+  if (response.status === 204) { // No Content for DELETE usually
     return null as T;
   }
 
@@ -150,7 +205,20 @@ export async function apiClient<T>(endpoint: string, options: RequestInit = {}):
   if (contentType && contentType.indexOf("application/json") !== -1) {
     return response.json() as Promise<T>;
   } else {
-    console.warn(`Received non-JSON response from ${endpoint}. Content-Type: ${contentType}`);
+    // If no content type or not JSON, attempt to read as text or return null for success
+    // This might happen for successful DELETEs that don't return JSON but also not 204
+    try {
+        const textResponse = await response.text();
+        if(textResponse) {
+            console.warn(`Received non-JSON response from ${endpoint}. Content: ${textResponse}`);
+            return { message: textResponse } as T; // Or handle as needed
+        }
+    } catch (e) {
+        // If text() fails (e.g. already read or truly empty), just fall through
+    }
+    console.warn(`Received non-JSON or empty response from ${endpoint}. Content-Type: ${contentType}`);
     return null as T;
   }
 }
+
+    
