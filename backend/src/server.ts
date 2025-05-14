@@ -2,12 +2,18 @@
 // backend/src/server.ts
 import express, { type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
+import fs from 'fs';
+import path from 'path';
 import config from './config'; 
 import mainRouter from './routes'; 
+import authRoutes from './routes/authRoutes'; // Import auth routes
+import dataRoutes from './routes/dataRoutes'; // Import data routes
 import { initializeScheduler, clearAllScheduledCronTasks, getScheduledTasksStatus } from './services/schedulerService'; 
 import * as deviceService from './services/deviceService'; 
 import * as wristbandService from './services/wristbandService'; 
 import { log } from './services/logService'; 
+import { initializeAppStatusFile } from './services/dataManagementService';
+
 
 const app = express();
 
@@ -23,7 +29,10 @@ const {
 
 
 // Middleware
-app.use(cors()); 
+app.use(cors({
+  origin: ['http://localhost:9002', 'http://localhost:3000'], // Add your frontend URL
+  credentials: true,
+}));
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true })); 
 
@@ -33,8 +42,17 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
+// Ensure upload directory exists
+const uploadDir = path.join(__dirname, '../uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
 // API Routes
-app.use('/api', mainRouter); 
+app.use('/api/auth', authRoutes); // Mount auth routes
+app.use('/api/data', dataRoutes); // Mount data routes for CSV & status
+app.use('/api', mainRouter); // Mount other main API routes (devices, routines, etc.)
+
 
 // Root route
 app.get('/', (req: Request, res: Response) => {
@@ -56,7 +74,7 @@ app.get('/status', (req: Request, res: Response) => {
       wristbandSimulationIntervalMs,
     },
     scheduler: {
-      cronTasksStatus: getScheduledTasksStatus(), // Get status from schedulerService
+      cronTasksStatus: getScheduledTasksStatus(), 
     }
   });
 });
@@ -72,11 +90,16 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 
 
 // Initialize services that need to run on startup
+initializeAppStatusFile().then(() => {
+  log('info', 'App status file initialized/checked.', undefined, {component: 'ServerStartup'});
+}).catch(err => {
+  log('error', 'Failed to initialize app status file.', undefined, {component: 'ServerStartup', error: err});
+});
+
 initializeScheduler(); 
 log('info', 'Scheduler initialized.', undefined, {component: 'ServerStartup'});
 
 // Start Data Simulation
-// Only run simulations in development mode by default, or if explicitly enabled and not in production.
 const runDeviceSimulation = enableDeviceSimulation && !config.isProduction;
 const runWristbandSimulation = enableWristbandSimulation && !config.isProduction;
 
@@ -84,7 +107,6 @@ if (runDeviceSimulation) {
   log('info', `Device data simulation starting for user ${simulatedUserId}. Interval: ${deviceSimulationIntervalMs / 1000}s.`, undefined, {component: 'ServerStartup'});
   setInterval(async () => {
     try {
-      // log('debug', `Triggering device simulation for user ${simulatedUserId}`, simulatedUserId, {component: 'ServerSimulationLoop'});
       await deviceService.simulateDeviceChanges(simulatedUserId);
     } catch (err) {
       log('error', 'Error in device simulation interval', simulatedUserId, { error: (err as Error).message, stack: (err as Error).stack, component: 'ServerSimulationLoop' });
@@ -99,7 +121,6 @@ if (runWristbandSimulation) {
   log('info', `Wristband data simulation starting for user ${simulatedUserId}. Interval: ${wristbandSimulationIntervalMs / 1000}s.`, undefined, {component: 'ServerStartup'});
   setInterval(async () => {
     try {
-      // log('debug', `Triggering wristband simulation for user ${simulatedUserId}`, simulatedUserId, {component: 'ServerSimulationLoop'});
       await wristbandService.simulateAndProcessWristbandData(simulatedUserId);
     } catch (err) {
       log('error', 'Error in wristband simulation interval', simulatedUserId, { error: (err as Error).message, stack: (err as Error).stack, component: 'ServerSimulationLoop' });
@@ -114,13 +135,11 @@ const server = app.listen(config.port, () => {
   log('success', `WakeSync backend server running on http://localhost:${config.port}`, undefined, {component: 'ServerStartup', environment: config.nodeEnv});
 });
 
-// Graceful Shutdown
 const gracefulShutdown = (signal: string) => {
   log('info', `${signal} signal received: closing HTTP server`, undefined, { component: 'ServerShutdown' });
-  clearAllScheduledCronTasks(); // Clear cron jobs
+  clearAllScheduledCronTasks(); 
   server.close(() => {
     log('info', 'HTTP server closed', undefined, { component: 'ServerShutdown' });
-    // Add any other cleanup here (e.g. database connections)
     process.exit(0);
   });
 };
@@ -129,4 +148,3 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 export default app;
-

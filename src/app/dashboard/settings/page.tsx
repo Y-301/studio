@@ -13,15 +13,15 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { UserCircle, Bell, ShieldCheck, CreditCard, SlidersHorizontal, Link as LinkIcon, AlertTriangle, Trash2, Camera, Loader2, Activity, BarChart, Zap, Users, Settings as SettingsTabIcon, Separator } from "lucide-react";
+import { UserCircle, Bell, ShieldCheck, CreditCard, SlidersHorizontal, Link as LinkIcon, AlertTriangle, Trash2, Camera, Loader2, Activity, BarChart, Zap, Users, Settings as SettingsTabIcon, FileSpreadsheet, Download, UploadCloud } from "lucide-react";
+import { Separator } from "@/components/ui/separator" // Corrected import
 import { useToast } from "@/hooks/use-toast";
-import React, { useState, useEffect } from "react";
-// Import the general User type and specific auth methods from the conditional firebase.ts
-import { auth, db, storage, type User, getEmailProviderCredential, serverTimestamp, Timestamp } from "@/lib/firebase"; 
+import React, { useState, useEffect, useRef } from "react";
+import { auth, User } from "@/lib/firebase"; 
 import { useRouter } from 'next/navigation';
-// Corrected import path for UserSettingsFromAPI type
-import type { UserSettings as UserSettingsFromAPI } from '@/backend/src/models/settings'; 
+import { UserSettings as UserSettingsFromAPI } from '@/backend/src/models/settings'; 
 import { apiClient } from "@/lib/apiClient";
+import { useAppContext } from "@/contexts/AppContext";
 
 
 const profileFormSchema = z.object({
@@ -52,8 +52,6 @@ const passwordFormSchema = z.object({
     path: ["confirmNewPassword"],
 }).refine(data => {
     if (data.newPassword && data.newPassword.length > 0 && (!data.currentPassword || data.currentPassword.length === 0)) {
-        // This check is only relevant if a user is actually logged in (not guest in mock mode)
-        // For now, the mock auth always has a currentUser if you "log in" with mock credentials
         return false; 
     }
     return true;
@@ -66,14 +64,16 @@ const passwordFormSchema = z.object({
 export default function SettingsPage() {
   const { toast } = useToast();
   const router = useRouter();
+  const { currentUser, isLoadingStatus: isLoadingAppContext, isAppInitialized, setIsDataFromCsv, setIsAppInitialized } = useAppContext();
+  
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null); 
   
-  const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
-  const [isLoadingGlobal, setIsLoadingGlobal] = useState(true);
+  // No local firebaseUser state, use currentUser from AppContext
   const [settingsError, setSettingsError] = useState<string | null>(null);
-
-  const isMockMode = process.env.NEXT_PUBLIC_USE_MOCK_MODE === 'true';
+  const [selectedCsvFile, setSelectedCsvFile] = useState<File | null>(null);
+  const [isUploadingCsv, setIsUploadingCsv] = useState(false);
+  const csvFileInputRef = useRef<HTMLInputElement>(null);
 
 
   const profileForm = useForm<z.infer<typeof profileFormSchema>>({
@@ -96,77 +96,43 @@ export default function SettingsPage() {
   });
 
  useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (user) => {
-      setIsLoadingGlobal(true);
-      if (user) {
-        setFirebaseUser(user as User);
-        profileForm.reset({ name: user.displayName || "", email: user.email || "Not available" });
-        setAvatarPreview(user.photoURL);
+    if (!isLoadingAppContext && currentUser) {
+        profileForm.reset({ name: currentUser.displayName || "", email: currentUser.email || "Not available" });
+        setAvatarPreview(currentUser.photoURL);
 
         setSettingsError(null);
-        try {
-          // Fetch settings
-          // In mock mode, apiClient handles this. Otherwise, it goes to backend.
-          const userSettings = await apiClient<UserSettingsFromAPI>(`/settings/${user.uid || 'user1'}`);
-          if (userSettings && Object.keys(userSettings).length > 0) {
-             preferencesForm.reset({
-              theme: userSettings.theme,
-              notifications: userSettings.notifications,
-              timezone: userSettings.timezone,
-            });
-          } else if (isMockMode) {
-             console.log("No user settings found in MOCK API, using defaults.");
-             preferencesForm.reset({ theme: 'system', notifications: { email: true, push: true }, timezone: 'UTC' });
-          } else {
-            // If not mock mode and no settings from API, use defaults and potentially save them
-            console.log("No user settings found in REAL API, using defaults.");
-            const defaultSettings = {
-              theme: 'system' as 'system', notifications: { email: true, push: true }, timezone: 'UTC',
-            };
-            preferencesForm.reset(defaultSettings);
-            // Optionally try to save defaults to backend
+        const fetchSettings = async () => {
             try {
-                await apiClient(`/settings/${user.uid}`, {
-                    method: 'PUT',
-                    body: JSON.stringify(defaultSettings)
+              const userSettings = await apiClient<UserSettingsFromAPI>(`/settings/${currentUser.uid}`);
+              if (userSettings && Object.keys(userSettings).length > 0) {
+                 preferencesForm.reset({
+                  theme: userSettings.theme,
+                  notifications: userSettings.notifications,
+                  timezone: userSettings.timezone,
                 });
-            } catch (saveError) {
-                console.error("Failed to save default settings to backend:", saveError);
+              } else {
+                console.log("No user settings found in API, using defaults.");
+                preferencesForm.reset({ theme: 'system', notifications: { email: true, push: true }, timezone: 'UTC' });
+              }
+            } catch (err) {
+              const errorMsg = (err as Error).message || "Could not load your preferences.";
+              setSettingsError(errorMsg + " Using defaults.");
+              toast({ title: "Preferences Load Failed", description: errorMsg, variant: "destructive"});
+               preferencesForm.reset({ theme: 'system', notifications: { email: true, push: true }, timezone: 'UTC' });
             }
-          }
-        } catch (err) {
-          const errorMsg = (err as Error).message || "Could not load your preferences.";
-          setSettingsError(errorMsg + " Using defaults.");
-          toast({ title: "Preferences Load Failed", description: errorMsg, variant: "destructive"});
-           preferencesForm.reset({
-            theme: 'system',
-            notifications: { email: true, push: true },
-            timezone: 'UTC',
-          });
-        }
-      } else {
-        // If not in mock mode, and no user, redirect. In mock mode, allow guest view.
-        if (!isMockMode) {
-            toast({ title: "Not Authenticated", description: "Please login to access settings.", variant: "destructive" });
-            router.push("/auth/login");
-        } else {
-            // Mock guest user for settings page
-            setFirebaseUser({ uid: "guest-user", email: "guest@example.com", displayName: "Guest", photoURL: null } as User);
-            profileForm.reset({name: "Guest", email: "guest@example.com"});
-            preferencesForm.reset({ theme: 'system', notifications: { email: false, push: false }, timezone: 'UTC' });
-            setSettingsError("Running in guest mode. Some features are disabled.");
-        }
-      }
-      setIsLoadingGlobal(false);
-    });
-     return () => unsubscribe();
+        };
+        fetchSettings();
+    } else if (!isLoadingAppContext && !currentUser && isAppInitialized) {
+      // App is initialized but no user, redirect to login
+      router.push('/auth/login');
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router, isMockMode]); 
+  }, [currentUser, isLoadingAppContext, isAppInitialized, router]); 
 
-  // Effect for theme changes
+
   useEffect(() => {
     const currentTheme = preferencesForm.watch('theme');
-    if (typeof window !== 'undefined' && firebaseUser) { 
+    if (typeof window !== 'undefined' && currentUser) { 
       document.documentElement.classList.remove('light', 'dark');
       if (currentTheme === 'dark') {
         document.documentElement.classList.add('dark');
@@ -178,34 +144,32 @@ export default function SettingsPage() {
         localStorage.removeItem('theme'); 
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         if (prefersDark) document.documentElement.classList.add('dark');
-        else document.documentElement.classList.add('light'); // Default to light if system has no preference or error
+        else document.documentElement.classList.add('light');
       }
     }
-  }, [preferencesForm.watch('theme'), firebaseUser]);
+  }, [preferencesForm.watch('theme'), currentUser]);
 
 
   async function onProfileSubmit(values: z.infer<typeof profileFormSchema>) {
-    if (!firebaseUser || !auth.currentUser || firebaseUser.uid === "guest-user") { 
+    if (!currentUser || currentUser.uid === "guest-user") { 
         toast({ title: "Action Not Allowed", description: "Profile updates are disabled for guest users.", variant: "destructive"});
         return;
     }
     profileForm.formState.isSubmitting; 
     try {
-        let photoURLToUpdate = firebaseUser.photoURL;
-        if (avatarFile && !isMockMode) { 
-          const storageRef = storage.ref(`avatars/${firebaseUser.uid}/${avatarFile.name}`);
-          const uploadTask = await storage.uploadBytes(storageRef, avatarFile); 
-          photoURLToUpdate = await storage.getDownloadURL(uploadTask.ref);
-          setAvatarPreview(photoURLToUpdate); 
-          setAvatarFile(null); 
-        } else if (avatarFile && isMockMode) {
-            photoURLToUpdate = avatarPreview; 
+        let photoURLToUpdate = currentUser.photoURL;
+        if (avatarFile) { 
+            // For local backend, actual file upload to backend would be needed.
+            // This is a placeholder if storage isn't fully implemented in local backend.
+            console.warn("Avatar file selected, but local backend storage upload needs full implementation.");
+            // For demo, we can use a data URL or just update the name.
+            // photoURLToUpdate = avatarPreview; 
             setAvatarFile(null);
-            toast({ title: "Avatar Changed (Mock)", description: "Avatar preview updated. No actual upload in mock mode."});
+            toast({ title: "Avatar Change (Conceptual)", description: "Avatar preview updated. Backend file upload needed for persistence."});
         }
 
-        await auth.updateProfile(auth.currentUser as User, { displayName: values.name, photoURL: photoURLToUpdate });
-        setFirebaseUser(prev => prev ? {...prev, displayName: values.name, photoURL: photoURLToUpdate } : null);
+        // Call the local auth.updateProfile which calls backend if implemented, or updates localStorage.
+        await auth.updateProfile(currentUser as User, { displayName: values.name, photoURL: photoURLToUpdate });
         
         toast({ title: "Profile Updated", description: "Your profile information has been saved." });
     } catch (error: any) {
@@ -215,7 +179,7 @@ export default function SettingsPage() {
   }
 
   async function onPreferencesSubmit(values: z.infer<typeof preferencesFormSchema>) {
-    if (!firebaseUser || firebaseUser.uid === "guest-user") {
+    if (!currentUser || currentUser.uid === "guest-user") {
       toast({ title: "Action Not Allowed", description: "Preference updates are disabled for guest users.", variant: "destructive"});
       return;
     }
@@ -225,19 +189,10 @@ export default function SettingsPage() {
         theme: values.theme,
         notifications: values.notifications,
         timezone: values.timezone,
-        updatedAt: isMockMode ? new Date().toISOString() : serverTimestamp(), // Use ISO string for mock, serverTimestamp for real
+        // Backend will handle updatedAt
       };
       
-      // If creating for the first time, also set createdAt
-      if (!isMockMode) { // Only do this if it's a real backend that might not have the settings yet
-        const currentSettings = await apiClient<UserSettingsFromAPI | null>(`/settings/${firebaseUser.uid}`);
-        if (!currentSettings || Object.keys(currentSettings).length === 0) {
-          (dataToSave as any).createdAt = serverTimestamp();
-        }
-      }
-
-
-      await apiClient(`/settings/${firebaseUser.uid}`, {
+      await apiClient(`/settings/${currentUser.uid}`, {
         method: 'PUT',
         body: JSON.stringify(dataToSave)
       });
@@ -250,8 +205,8 @@ export default function SettingsPage() {
   }
   
   async function onPasswordSubmit(values: z.infer<typeof passwordFormSchema>) {
-    if (!firebaseUser || !firebaseUser.email || !auth.currentUser || firebaseUser.uid === "guest-user") {
-        toast({ title: "Action Not Allowed", description: "Password changes are disabled for guest users or if email is unavailable.", variant: "destructive" });
+    if (!currentUser || !currentUser.email || currentUser.uid === "guest-user") {
+        toast({ title: "Action Not Allowed", description: "Password changes are disabled.", variant: "destructive" });
         return;
     }
     if (!values.newPassword && !values.currentPassword) {
@@ -263,27 +218,27 @@ export default function SettingsPage() {
         return;
     }
      if (!values.newPassword && values.currentPassword) {
-        toast({ title: "Password Not Changed", description: "Please enter a new password to make changes.", variant: "default"});
+        toast({ title: "Password Not Changed", description: "Please enter a new password.", variant: "default"});
         return;
     }
 
     passwordForm.formState.isSubmitting;
     try {
-        const credential = getEmailProviderCredential(firebaseUser.email, values.currentPassword!);
-        await auth.reauthenticateWithCredential(auth.currentUser as User, credential);
-        await auth.updatePassword(auth.currentUser as User, values.newPassword!);
+        // Local backend's auth.updatePassword would handle reauth logic internally or require currentPassword.
+        // For simplicity, sending all to backend if it needs it.
+        await apiClient(`/auth/change-password`, { // Assuming a new backend endpoint
+            method: 'POST',
+            body: JSON.stringify({
+                currentPassword: values.currentPassword,
+                newPassword: values.newPassword
+            })
+        });
 
         toast({ title: "Password Updated", description: "Your password has been changed successfully." });
         passwordForm.reset({ currentPassword: "", newPassword: "", confirmNewPassword: "" });
     } catch (error: any) {
         console.error("Password change error:", error);
-        let userFriendlyMessage = error.message || "Password change failed. Please check your current password.";
-        if ((!isMockMode && (error as any).code === 'auth/wrong-password') || (error.message?.includes('wrong-password') || error.message?.includes('Incorrect current password'))) {
-             userFriendlyMessage = "Incorrect current password. Please try again.";
-        } else if ((!isMockMode && (error as any).code === 'auth/too-many-requests') || error.message?.includes("too-many-requests")) {
-            userFriendlyMessage = "Too many attempts. Please try again later.";
-        }
-        toast({ title: "Password Change Failed", description: userFriendlyMessage, variant: "destructive" });
+        toast({ title: "Password Change Failed", description: error.message || "Could not change password.", variant: "destructive" });
     }
   }
 
@@ -304,19 +259,14 @@ export default function SettingsPage() {
   };
 
   const handleDeleteAccount = async () => {
-    if (firebaseUser && auth.currentUser && firebaseUser.uid !== "guest-user") {
+    if (currentUser && currentUser.uid !== "guest-user") {
         try {
+            // Backend should handle actual deletion. Frontend signs out.
+            // await apiClient(`/users/${currentUser.uid}`, { method: 'DELETE' }); // Example
             await auth.signOut(auth); 
-            if (isMockMode && firebaseUser.email) {
-                 // mockUserStore needs to be accessible to delete, or done within mockAuth
-                 console.log(`[Mock] User ${firebaseUser.email} logged out. Account "deletion" simulated.`);
-            } else if (!isMockMode && auth.currentUser) {
-                // Real Firebase: await auth.currentUser.delete(); (Careful with this in dev)
-                console.log("[Real Firebase] Actual account deletion would happen here. For demo, only signing out.");
-            }
             toast({
                 title: "Account Deletion Processed",
-                description: "You have been logged out. In a real app, further steps would occur.",
+                description: "You have been logged out. Backend would handle full deletion.",
                 variant: "destructive"
             });
              router.push('/auth/signup'); 
@@ -325,17 +275,95 @@ export default function SettingsPage() {
             toast({ title: "Account Deletion Failed", description: error.message || "Could not delete account.", variant: "destructive" });
         }
     } else {
-         toast({ title: "Action Not Allowed", description: "Account deletion is not available for guest users.", variant: "destructive" });
+         toast({ title: "Action Not Allowed", description: "Account deletion not available.", variant: "destructive" });
+    }
+  };
+  
+  const handleCsvFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0]) {
+      setSelectedCsvFile(event.target.files[0]);
+    } else {
+      setSelectedCsvFile(null);
     }
   };
 
-  const CurrentUserAvatarFallback = () => {
-    if (!firebaseUser) return <UserCircle size={40}/>;
-    return firebaseUser.displayName ? firebaseUser.displayName.charAt(0).toUpperCase() : (firebaseUser.email ? firebaseUser.email.charAt(0).toUpperCase() : <UserCircle size={40}/>);
+  const handleUploadCsv = async () => {
+    if (!selectedCsvFile) {
+      toast({ title: "No CSV File", description: "Please select a CSV file to upload.", variant: "destructive" });
+      return;
+    }
+    if (!currentUser) {
+      toast({ title: "Not Authenticated", description: "Please log in to upload data.", variant: "destructive" });
+      return;
+    }
+
+    setIsUploadingCsv(true);
+    const formData = new FormData();
+    formData.append('deviceCsv', selectedCsvFile); // 'deviceCsv' must match backend multer field name
+
+    try {
+      // Assuming the CSV is for devices for this example
+      const response = await apiClient<{ message: string; importedCount?: number }>('/data/upload-csv/devices', {
+        method: 'POST',
+        body: formData,
+        headers: {
+          // Content-Type is set automatically by browser for FormData
+        },
+      });
+      toast({ title: "CSV Upload Successful", description: `${response.message} ${response.importedCount ? '('+response.importedCount+' devices)' : ''}` });
+      setIsDataFromCsv(true); // Update global context
+      if (csvFileInputRef.current) {
+        csvFileInputRef.current.value = ""; // Reset file input
+      }
+      setSelectedCsvFile(null);
+    } catch (error: any) {
+      toast({ title: "CSV Upload Failed", description: error.message || "Could not upload CSV.", variant: "destructive" });
+    } finally {
+      setIsUploadingCsv(false);
+    }
+  };
+
+  const handleDownloadCsv = async (dataType: 'devices' /* | 'routines' etc. */) => {
+     if (!currentUser) {
+      toast({ title: "Not Authenticated", description: "Please log in to download data.", variant: "destructive" });
+      return;
+    }
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/data/export-csv/${dataType}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('wakeSyncToken')}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({message: response.statusText}));
+        throw new Error(errorData.message || `Failed to download CSV: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `wakesync_${dataType}_export.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast({ title: "CSV Download Started", description: `Your ${dataType} data CSV is being downloaded.`});
+    } catch (error: any) {
+       toast({ title: "CSV Download Failed", description: error.message, variant: "destructive" });
+    }
   };
 
 
-  if (isLoadingGlobal) {
+  const CurrentUserAvatarFallback = () => {
+    if (!currentUser) return <UserCircle size={40}/>;
+    return currentUser.displayName ? currentUser.displayName.charAt(0).toUpperCase() : (currentUser.email ? currentUser.email.charAt(0).toUpperCase() : <UserCircle size={40}/>);
+  };
+
+
+  if (isLoadingAppContext) {
      return (
          <div className="flex items-center justify-center p-10 h-[calc(100vh-200px)]">
             <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -344,7 +372,7 @@ export default function SettingsPage() {
       );
   }
 
-  const isGuest = firebaseUser?.uid === "guest-user";
+  const isGuest = !currentUser; // Simplified guest check for local mode
 
   return (
     <div className="space-y-8 p-4 md:p-6 lg:p-8">
@@ -353,17 +381,18 @@ export default function SettingsPage() {
         <div>
             <h1 className="text-3xl font-bold">Settings</h1>
             <p className="text-muted-foreground">
-            Manage your account, preferences, and app settings. {isGuest && "(Guest Mode - Some features disabled)"}
+            Manage your account, preferences, and app settings. {isGuest && "(Read-only Mode - Please Login/Signup)"}
             </p>
         </div>
       </div>
 
-      {firebaseUser && ( 
+      {currentUser && ( 
         <Tabs defaultValue="profile" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 lg:grid-cols-6 mb-6 overflow-x-auto no-scrollbar">
+            <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 lg:grid-cols-7 mb-6 overflow-x-auto no-scrollbar"> {/* Adjusted grid for more tabs */}
             <TabsTrigger value="profile"><UserCircle className="mr-2 h-4 w-4 inline-block" />Profile</TabsTrigger>
             <TabsTrigger value="preferences"><SlidersHorizontal className="mr-2 h-4 w-4 inline-block" />Preferences</TabsTrigger>
             <TabsTrigger value="notifications"><Bell className="mr-2 h-4 w-4 inline-block" />Notifications</TabsTrigger>
+            <TabsTrigger value="data"><FileSpreadsheet className="mr-2 h-4 w-4 inline-block"/>Data Mgt.</TabsTrigger> {/* New Data Management Tab */}
             <TabsTrigger value="integrations" id="integrations"><LinkIcon className="mr-2 h-4 w-4 inline-block" />Integrations</TabsTrigger>
             <TabsTrigger value="security"><ShieldCheck className="mr-2 h-4 w-4 inline-block" />Security</TabsTrigger>
             <TabsTrigger value="billing" id="billing"><CreditCard className="mr-2 h-4 w-4 inline-block" />Billing</TabsTrigger>
@@ -380,7 +409,7 @@ export default function SettingsPage() {
                     <form onSubmit={profileForm.handleSubmit(onProfileSubmit)} className="space-y-6">
                     <div className="flex items-center space-x-4 mb-6">
                         <Avatar className="h-20 w-20">
-                        <AvatarImage src={avatarPreview || undefined} alt={firebaseUser?.displayName || "User Avatar"} />
+                        <AvatarImage src={avatarPreview || undefined} alt={currentUser?.displayName || "User Avatar"} />
                         <AvatarFallback><CurrentUserAvatarFallback/></AvatarFallback>
                         </Avatar>
                         <Button variant="outline" type="button" onClick={() => document.getElementById('avatar-upload')?.click()} disabled={isGuest}>
@@ -426,22 +455,23 @@ export default function SettingsPage() {
             </TabsContent>
 
             <TabsContent value="preferences">
+            {/* Preferences form content remains largely the same, just ensure disabled states are respected */}
             <Card className="shadow-md">
                 <CardHeader>
                 <CardTitle>App Preferences</CardTitle>
                 <CardDescription>Customize your WakeSync experience.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                {(isLoadingGlobal || preferencesForm.formState.isSubmitting) && !settingsError && ( 
+                {(isLoadingAppContext || preferencesForm.formState.isSubmitting) && !settingsError && ( 
                     <div className="flex items-center justify-center p-6"><Loader2 className="h-6 w-6 animate-spin text-primary" /><span className="ml-2">Loading/Saving preferences...</span></div>
                 )}
-                {settingsError && !isGuest && ( // Only show actual errors if not guest
+                {settingsError && !isGuest && ( 
                     <div className="text-destructive p-4 border border-destructive bg-destructive/10 rounded-md">{settingsError}</div>
                 )}
-                 {isGuest && settingsError && ( // Show guest mode info
+                 {isGuest && settingsError && ( 
                     <div className="text-muted-foreground p-4 border border-border bg-muted/50 rounded-md">{settingsError}</div>
                 )}
-                {!isLoadingGlobal && (!settingsError || isGuest) && ( 
+                {!isLoadingAppContext && (!settingsError || isGuest) && ( 
                 <Form {...preferencesForm}>
                     <form onSubmit={preferencesForm.handleSubmit(onPreferencesSubmit)} className="space-y-6">
                     <FormField
@@ -506,13 +536,14 @@ export default function SettingsPage() {
             </TabsContent>
             
             <TabsContent value="notifications">
+            {/* Notifications form content remains largely the same, ensure disabled states */}
             <Card className="shadow-md">
                 <CardHeader>
                 <CardTitle>Notification Settings</CardTitle>
                 <CardDescription>Manage how you receive alerts and updates.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                {(isLoadingGlobal || preferencesForm.formState.isSubmitting) && !settingsError && (
+                {(isLoadingAppContext || preferencesForm.formState.isSubmitting) && !settingsError && (
                      <div className="flex items-center justify-center p-6"><Loader2 className="h-6 w-6 animate-spin text-primary" /><span className="ml-2">Loading/Saving notification settings...</span></div>
                 )}
                 {settingsError && !isGuest && (
@@ -521,7 +552,7 @@ export default function SettingsPage() {
                 {isGuest && settingsError && (
                     <div className="text-muted-foreground p-4 border border-border bg-muted/50 rounded-md">{settingsError}</div>
                 )}
-                {!isLoadingGlobal && (!settingsError || isGuest) && (
+                {!isLoadingAppContext && (!settingsError || isGuest) && (
                     <Form {...preferencesForm}> 
                         <form onSubmit={preferencesForm.handleSubmit(onPreferencesSubmit)} className="space-y-6">
                             <FormField
@@ -577,11 +608,52 @@ export default function SettingsPage() {
             </Card>
             </TabsContent>
 
+            <TabsContent value="data">
+              <Card className="shadow-md">
+                <CardHeader>
+                  <CardTitle>Data Management</CardTitle>
+                  <CardDescription>Manage your application data. Upload CSV to seed or download current data.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div>
+                    <h3 className="text-md font-medium mb-2">Upload Device Data (CSV)</h3>
+                    <div className="flex items-center gap-2">
+                      <Input type="file" accept=".csv" onChange={handleCsvFileChange} ref={csvFileInputRef} className="flex-grow" disabled={isGuest || isUploadingCsv}/>
+                      <Button onClick={handleUploadCsv} disabled={isGuest || !selectedCsvFile || isUploadingCsv}>
+                        {isUploadingCsv ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UploadCloud className="mr-2 h-4 w-4" />}
+                        Upload
+                      </Button>
+                    </div>
+                    {selectedCsvFile && <p className="text-xs text-muted-foreground mt-1">Selected: {selectedCsvFile.name}</p>}
+                    <p className="text-xs text-muted-foreground mt-2">
+                        Expected CSV columns for devices: id, userId, name, type, status, room, connectionDetails, dataAiHint, settings_brightness, settings_temperature, settings_volume, createdAt, updatedAt.
+                        Uploading will overwrite existing device data if IDs match or add new ones.
+                    </p>
+                  </div>
+                  <Separator />
+                  <div>
+                    <h3 className="text-md font-medium mb-2">Download Data (CSV)</h3>
+                    <div className="flex flex-wrap gap-2">
+                        <Button variant="outline" onClick={() => handleDownloadCsv('devices')} disabled={isGuest}>
+                            <Download className="mr-2 h-4 w-4" /> Download Devices CSV
+                        </Button>
+                        {/* Add buttons for other data types like routines when implemented */}
+                        {/* <Button variant="outline" onClick={() => handleDownloadCsv('routines')} disabled={isGuest}>
+                            <Download className="mr-2 h-4 w-4" /> Download Routines CSV
+                        </Button> */}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+
             <TabsContent value="integrations">
+            {/* Integrations content remains largely the same, ensure disabled states */}
             <Card className="shadow-md">
                 <CardHeader>
                 <CardTitle>Connected Accounts & Integrations</CardTitle>
-                <CardDescription>Link WakeSync with other services for an enhanced experience. {isGuest && "(Disabled in Guest Mode)"}</CardDescription>
+                <CardDescription>Link WakeSync with other services for an enhanced experience. {isGuest && "(Disabled)"}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                 <Card className="p-4 hover:shadow-lg transition-shadow">
@@ -596,7 +668,8 @@ export default function SettingsPage() {
                     <Button variant="outline" onClick={() => toast({title: "Connect Google Fit (Demo)", description:"Integration flow would start here."})} disabled={isGuest}>Connect</Button>
                     </div>
                 </Card>
-                <Card className="p-4 hover:shadow-lg transition-shadow">
+                {/* ... other integration cards ... */}
+                 <Card className="p-4 hover:shadow-lg transition-shadow">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                             <BarChart className="h-8 w-8 text-gray-500" />
@@ -637,10 +710,11 @@ export default function SettingsPage() {
             </TabsContent>
 
             <TabsContent value="security">
+            {/* Security content remains largely the same, ensure disabled states */}
             <Card className="shadow-md">
                 <CardHeader>
                 <CardTitle>Security Settings</CardTitle>
-                <CardDescription>Manage your account security. {isGuest && "(Disabled in Guest Mode)"}</CardDescription>
+                <CardDescription>Manage your account security. {isGuest && "(Disabled)"}</CardDescription>
                 </CardHeader>
                 <CardContent>
                 <Form {...passwordForm}>
@@ -716,6 +790,7 @@ export default function SettingsPage() {
             </TabsContent>
             
             <TabsContent value="billing">
+            {/* Billing content remains largely the same, ensure disabled states */}
             <Card className="shadow-md">
                 <CardHeader>
                 <CardTitle>Billing & Subscription</CardTitle>
@@ -750,6 +825,7 @@ export default function SettingsPage() {
                 </CardContent>
             </Card>
             </TabsContent>
+
             <Card className="border-destructive mt-8 shadow-md">
             <CardHeader>
                 <CardTitle className="text-destructive flex items-center gap-2"><AlertTriangle/>Danger Zone</CardTitle>
@@ -758,14 +834,14 @@ export default function SettingsPage() {
             <CardContent>
                 <AlertDialog>
                     <AlertDialogTrigger asChild>
-                        <Button variant="destructive" disabled={!firebaseUser || isGuest}><Trash2 className="mr-2 h-4 w-4"/>Delete Account</Button>
+                        <Button variant="destructive" disabled={!currentUser || isGuest}><Trash2 className="mr-2 h-4 w-4"/>Delete Account</Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                         <AlertDialogHeader>
                         <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                         <AlertDialogDescription>
                             This action cannot be undone. This will permanently delete your account
-                            and remove all your data from our servers (this is a mock demo).
+                            and remove all your data from our servers (locally stored data for this demo).
                         </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
@@ -780,6 +856,16 @@ export default function SettingsPage() {
             </CardContent>
             </Card>
         </Tabs>
+      )}
+      {!currentUser && !isLoadingAppContext && (
+         <Card className="shadow-md">
+            <CardHeader>
+                <CardTitle>Access Denied</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <p className="text-muted-foreground">Please <Link href="/auth/login" className="text-primary hover:underline">login</Link> or <Link href="/auth/signup" className="text-primary hover:underline">sign up</Link> to manage your settings.</p>
+            </CardContent>
+         </Card>
       )}
     </div>
   );

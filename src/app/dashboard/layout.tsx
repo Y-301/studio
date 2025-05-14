@@ -4,7 +4,6 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { auth, type User } from '@/lib/firebase';
 import {
   SidebarProvider,
   Sidebar,
@@ -31,40 +30,37 @@ import {
   DropdownMenuSeparator as DropdownMenuSeparatorComponent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Bell, LogOut, UserCircle, CreditCard, Settings as SettingsIconLucide, Link as LinkIconLucideComponent, Loader2, LogIn, Settings } from 'lucide-react';
+import { Bell, LogOut, UserCircle, CreditCard, Settings as SettingsIconLucide, Link as LinkIconLucideComponent, Loader2, LogIn, Settings, AlertTriangle } from 'lucide-react';
 import { Logo } from '@/components/shared/Logo';
 import { dashboardNavItems, type NavItem } from '@/config/dashboard-nav';
 import { cn } from '@/lib/utils';
 import { Footer } from '@/components/layout/Footer';
 import { useToast } from '@/hooks/use-toast';
 import { ThemeToggle } from '@/components/shared/ThemeToggle';
+import { AppProvider, useAppContext } from '@/contexts/AppContext'; // Import AppProvider and useAppContext
+import { auth, User } from '@/lib/firebase'; // Import auth and User for local auth
 
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
-  const [currentUser, setCurrentUser] = React.useState<User | null>(null);
-  const [loadingAuth, setLoadingAuth] = React.useState(true);
+  const { isAppInitialized, isLoadingStatus, isDataFromCsv, currentUser } = useAppContext();
   const [pageTitle, setPageTitle] = React.useState('Dashboard');
 
-  const isMockMode = process.env.NEXT_PUBLIC_USE_MOCK_MODE === 'true';
-
   React.useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user) {
-        setCurrentUser(user as User);
-      } else {
-        setCurrentUser(null);
-        if (!isMockMode && pathname.startsWith('/dashboard/') && pathname !== '/dashboard') {
-             console.log("User not authenticated for protected page, redirecting to login for:", pathname);
-             router.push('/auth/login');
-        }
-      }
-      setLoadingAuth(false);
-    });
-    return () => unsubscribe();
-  }, [pathname, router, isMockMode]);
+    if (!isLoadingStatus && !isAppInitialized && pathname !== '/auth/signup' && pathname !=='/auth/login') {
+      // If app is not initialized (no users) and not already on signup/login, redirect to signup.
+      // This ensures new users are prompted to create an account first.
+      console.log("App not initialized and no current user, redirecting to signup.");
+      router.push('/auth/signup');
+    } else if (!isLoadingStatus && isAppInitialized && !currentUser && !pathname.startsWith('/auth/')) {
+      // App is initialized (users exist), but current user is not logged in. Redirect to login.
+      console.log("App initialized, but no current user, redirecting to login for path:", pathname);
+      router.push('/auth/login');
+    }
+  }, [isAppInitialized, isLoadingStatus, currentUser, router, pathname]);
+
 
   React.useEffect(() => {
     const currentNavItem = dashboardNavItems
@@ -74,16 +70,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       setPageTitle(currentNavItem.title);
     } else if (pathname === '/dashboard') {
       setPageTitle('Dashboard Overview');
-    } else if (pathname === '/dashboard/settings') {
+    } else if (pathname.startsWith('/dashboard/settings')) { // Match base and sub-paths like /dashboard/settings/profile
       setPageTitle('Settings');
     }
   }, [pathname]);
 
   const handleLogout = async () => {
     try {
-      await auth.signOut(auth);
+      await auth.signOut(auth); // Uses local signOut
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
-      setCurrentUser(null);
       router.push('/auth/login');
     } catch (error) {
       console.error("Logout error:", error);
@@ -91,21 +86,39 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   };
 
-  const shouldShowLoader = loadingAuth && !currentUser && !isMockMode && pathname.startsWith('/dashboard/') && pathname !== '/dashboard';
-
-
-  if (shouldShowLoader) {
+  if (isLoadingStatus || (!currentUser && isAppInitialized && !pathname.startsWith('/auth/'))) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="ml-3 text-muted-foreground">Authenticating...</p>
+        <p className="ml-3 text-muted-foreground">{isLoadingStatus ? "Checking app status..." : "Authenticating..."}</p>
       </div>
     );
   }
+  
+  // If app is not initialized and not on auth pages, show setup prompt or redirect handled above
+  if (!isLoadingStatus && !isAppInitialized && !pathname.startsWith('/auth/')) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
+          <Logo className="mb-8" iconSize={48} textSize="text-4xl"/>
+          <h1 className="text-2xl font-semibold mb-4">Welcome to WakeSync!</h1>
+          <p className="text-muted-foreground mb-6 text-center">
+            It looks like this is your first time here or there are no users yet.
+          </p>
+          <Button asChild size="lg">
+            <Link href="/auth/signup">Create Your First Account</Link>
+          </Button>
+           <p className="text-sm text-muted-foreground mt-4">
+            Alternatively, if you have a data file, you can set up via settings after creating an account.
+          </p>
+        </div>
+      );
+  }
+
 
   const isNavItemDisabled = (item: NavItem) => {
-    if (isMockMode) return item.title === 'Logs' || item.title === 'Integrations' ? true : false; // Disable Logs and Integrations in mock mode for now
-    return item.disabled === undefined ? !currentUser : item.disabled && !currentUser;
+    // In full local mode, most items should be enabled if a user is logged in.
+    // Specific items might still have a 'disabled' flag in their config.
+    return !currentUser || item.disabled;
   };
 
 
@@ -157,7 +170,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   isActive={pathname.startsWith('/dashboard/settings')}
                   tooltip={{content: "Settings", side: 'right', align: 'center', className: "ml-2"}}
                   className="w-full justify-start"
-                  disabled={isMockMode ? false : !currentUser}
+                  disabled={!currentUser}
                 >
                   <Settings className="h-5 w-5 shrink-0" />
                   <span className="truncate">Settings</span>
@@ -175,6 +188,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="flex-1">
              <h1 className="text-xl font-semibold text-foreground">{pageTitle}</h1>
           </div>
+          {isDataFromCsv && (
+            <div className="flex items-center gap-1.5 px-2 py-1 text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 rounded-md shadow">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                <span>CSV Data Active</span>
+            </div>
+          )}
           <div className="flex items-center gap-2 md:gap-4">
             <ThemeToggle />
             <Button variant="ghost" size="icon" aria-label="Notifications" className="relative rounded-full h-9 w-9">
@@ -194,7 +213,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>{currentUser ? (currentUser.displayName || currentUser.email || "My Account") : "Guest"}</DropdownMenuLabel>
                 <DropdownMenuSeparatorComponent />
-                {currentUser || isMockMode ? (
+                {currentUser ? (
                   <>
                     <DropdownMenuItem asChild>
                       <Link href="/dashboard/settings" className="flex items-center w-full">
@@ -221,27 +240,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuSeparatorComponent />
-                    {currentUser && (
-                        <DropdownMenuItem
-                        onClick={handleLogout}
-                        className="text-destructive focus:bg-destructive/10 focus:text-destructive cursor-pointer"
-                        >
-                          <>
-                            <LogOut className="mr-2 h-4 w-4" />
-                            Logout
-                          </>
-                        </DropdownMenuItem>
-                    )}
-                    {!currentUser && isMockMode && (
-                         <DropdownMenuItem asChild>
-                            <Link href="/auth/login" className="flex items-center w-full">
-                              <>
-                                <LogIn className="mr-2 h-4 w-4" />
-                                Login (Mock)
-                              </>
-                            </Link>
-                        </DropdownMenuItem>
-                    )}
+                    <DropdownMenuItem
+                    onClick={handleLogout}
+                    className="text-destructive focus:bg-destructive/10 focus:text-destructive cursor-pointer"
+                    >
+                        <>
+                        <LogOut className="mr-2 h-4 w-4" />
+                        Logout
+                        </>
+                    </DropdownMenuItem>
                   </>
                 ) : (
                   <>
@@ -271,5 +278,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <Footer />
       </SidebarInset>
     </SidebarProvider>
+  );
+}
+
+// Wrap DashboardLayoutContent with AppProvider
+export default function Layout({ children }: { children: React.ReactNode }) {
+  return (
+    <AppProvider>
+      <DashboardLayoutContent>{children}</DashboardLayoutContent>
+    </AppProvider>
   );
 }

@@ -1,6 +1,7 @@
 
 import fs from 'fs/promises';
 import path from 'path';
+import { log } from '../services/logService'; // Assuming logService is one level up
 
 const DATA_DIR = path.resolve(__dirname, '../../data');
 
@@ -9,7 +10,8 @@ const ensureDataDir = async () => {
   try {
     await fs.access(DATA_DIR);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+    const nodeError = error as NodeJS.ErrnoException;
+    if (nodeError.code === 'ENOENT') {
       console.log(`Data directory ${DATA_DIR} not found. Creating it.`);
       await fs.mkdir(DATA_DIR, { recursive: true });
     } else {
@@ -18,46 +20,48 @@ const ensureDataDir = async () => {
   }
 };
 
+// Initialize by ensuring data directory exists
+ensureDataDir().catch(err => console.error("Failed to ensure data directory:", err));
+
+
 interface DbData<T> {
   [key: string]: T;
 }
 
 export const readDbFile = async <T>(filename: string): Promise<DbData<T>> => {
-  await ensureDataDir(); // Ensure directory exists before reading
+  await ensureDataDir(); 
   const filePath = path.join(DATA_DIR, filename);
   try {
     const data = await fs.readFile(filePath, 'utf-8');
-    return JSON.parse(data);
+    return JSON.parse(data) as DbData<T>;
   } catch (error) {
-    // If file doesn't exist or is invalid JSON, return empty object
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      console.warn(`DB file ${filename} not found. Returning empty object.`);
-      return {};
+    const nodeError = error as NodeJS.ErrnoException;
+    if (nodeError.code === 'ENOENT') {
+      log('warn',`DB file ${filename} not found. Returning empty object. A new file will be created on write.`, undefined, {component: 'JsonDb'});
+      return {} as DbData<T>;
     }
-    console.error(`Error reading DB file ${filename}:`, error);
-    // For robustness, return empty object on other read errors too, or re-throw
-    return {}; 
+    log('error',`Error reading DB file ${filename}: ${nodeError.message}`, undefined, {component: 'JsonDb', stack: nodeError.stack});
+    return {} as DbData<T>; 
   }
 };
 
 export const writeDbFile = async <T>(filename: string, data: DbData<T>): Promise<void> => {
-  await ensureDataDir(); // Ensure directory exists before writing
+  await ensureDataDir(); 
   const filePath = path.join(DATA_DIR, filename);
   try {
     await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
   } catch (error) {
-    console.error(`Error writing DB file ${filename}:`, error);
-    throw error; // Re-throw to let caller handle
+    const nodeError = error as NodeJS.ErrnoException;
+    log('error', `Error writing DB file ${filename}: ${nodeError.message}`, undefined, {component: 'JsonDb', stack: nodeError.stack});
+    throw error; 
   }
 };
 
-// Example: Get a specific item by ID
 export const getItemById = async <T>(filename: string, id: string): Promise<T | undefined> => {
   const db = await readDbFile<T>(filename);
   return db[id];
 };
 
-// Example: Add or update an item
 export const upsertItem = async <T>(filename: string, id: string, item: T): Promise<T> => {
   const db = await readDbFile<T>(filename);
   db[id] = item;
@@ -65,7 +69,6 @@ export const upsertItem = async <T>(filename: string, id: string, item: T): Prom
   return item;
 };
 
-// Example: Delete an item by ID
 export const deleteItemById = async <T>(filename: string, id: string): Promise<boolean> => {
   const db = await readDbFile<T>(filename);
   if (db[id]) {
@@ -76,7 +79,6 @@ export const deleteItemById = async <T>(filename: string, id: string): Promise<b
   return false;
 };
 
-// Example: Get all items
 export const getAllItems = async <T>(filename: string): Promise<T[]> => {
   const db = await readDbFile<T>(filename);
   return Object.values(db);

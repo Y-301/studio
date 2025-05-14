@@ -1,447 +1,264 @@
+
 // src/lib/firebase.ts
+// This file now primarily provides local authentication and data interaction logic
+// by calling the local backend. Firebase SDK specific code is removed.
 
-// --- Configuration for Real Firebase (Used when USE_MOCK_MODE is false) ---
-import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
-import { 
-  getAuth, 
-  type Auth, 
-  type User as FirebaseUserType, // Rename to avoid conflict with our MockUser
-  signInWithEmailAndPassword as firebaseSignInWithEmailAndPassword,
-  createUserWithEmailAndPassword as firebaseCreateUserWithEmailAndPassword,
-  onAuthStateChanged as firebaseOnAuthStateChanged,
-  signOut as firebaseSignOut,
-  sendPasswordResetEmail as firebaseSendPasswordResetEmail,
-  updateProfile as firebaseUpdateProfile,
-  updatePassword as firebaseUpdatePassword,
-  reauthenticateWithCredential as firebaseReauthenticateWithCredential,
-  EmailAuthProvider // Needed for reauthentication credential
-} from "firebase/auth";
-import { 
-  getFirestore, 
-  type Firestore,
-  collection as firestoreCollection,
-  doc as firestoreDoc,
-  getDoc as firestoreGetDoc,
-  setDoc as firestoreSetDoc,
-  updateDoc as firestoreUpdateDoc,
-  deleteDoc as firestoreDeleteDoc,
-  addDoc as firestoreAddDoc,
-  onSnapshot as firestoreOnSnapshot,
-  query as firestoreQuery,
-  where as firestoreWhere,
-  getDocs as firestoreGetDocs,
-  Timestamp as FirestoreTimestamp,
-  serverTimestamp as firestoreServerTimestamp
-} from "firebase/firestore";
-import { 
-    getStorage, 
-    ref as storageRef, 
-    uploadBytes as firebaseUploadBytes, 
-    getDownloadURL as firebaseGetDownloadURL,
-    deleteObject as firebaseDeleteObject,
-    type FirebaseStorage
-} from "firebase/storage";
+import { apiClient } from './apiClient';
 
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-};
-
-// --- Mock Implementations (Used when USE_MOCK_MODE is true) ---
-
-export interface MockUser {
+// --- Local User Interface (replaces FirebaseUserType) ---
+export interface User {
   uid: string;
   email: string | null;
   displayName: string | null;
   photoURL: string | null;
-  emailVerified: boolean;
-  getIdToken: (forceRefresh?: boolean) => Promise<string>;
-  delete?: () => Promise<void>; // Added for account deletion
+  // Add any other fields you need from the user object
+  // emailVerified: boolean; // Example if needed
+  // getIdToken: (forceRefresh?: boolean) => Promise<string>; // Not directly used by UI now
 }
 
-const mockUserStore: Record<string, { password?: string; profile: MockUser }> = {
-  "demo@example.com": {
-    password: "password123",
-    profile: {
-      uid: "mock-uid-demo",
-      email: "demo@example.com",
-      displayName: "Demo User",
-      photoURL: "https://picsum.photos/seed/demouser/40/40",
-      emailVerified: true,
-      getIdToken: async () => "mock-id-token-demo",
-      delete: async () => { 
-        console.log("[MockAuth] Deleting user: demo@example.com");
-        delete mockUserStore["demo@example.com"];
-        if (mockCurrentUserInternal?.email === "demo@example.com") {
-          mockCurrentUserInternal = null;
-        }
-        notifyMockAuthStateChanged();
-      }
-    },
-  },
-};
+// --- App Status Context (New) ---
+export interface AppStatus {
+  isSeededByCsv: boolean;
+  isAppInitialized: boolean; // True if users exist, guiding first-time flow
+  isLoading: boolean;
+}
 
-let mockCurrentUserInternal: MockUser | null = null;
-const mockAuthStateListeners: Array<(user: MockUser | null) => void> = [];
+// --- Local Authentication Logic ---
+const WAKESYNC_TOKEN_KEY = 'wakeSyncToken';
+const WAKESYNC_USER_KEY = 'wakeSyncUser';
 
-const notifyMockAuthStateChanged = () => {
-  mockAuthSingleton.currentUser = mockCurrentUserInternal;
-  mockAuthStateListeners.forEach(listener => {
+let currentUserInternal: User | null = null;
+try {
+  const storedUser = localStorage.getItem(WAKESYNC_USER_KEY);
+  if (storedUser) {
+    currentUserInternal = JSON.parse(storedUser);
+  }
+} catch (e) {
+  console.error("Error parsing stored user:", e);
+  localStorage.removeItem(WAKESYNC_USER_KEY);
+  localStorage.removeItem(WAKESYNC_TOKEN_KEY);
+}
+
+const authStateListeners: Array<(user: User | null) => void> = [];
+
+const notifyAuthStateChanged = () => {
+  // Update the auth object's currentUser property
+  (auth as any).currentUser = currentUserInternal;
+  authStateListeners.forEach(listener => {
     try {
-      listener(mockCurrentUserInternal);
+      listener(currentUserInternal);
     } catch (e) {
-      console.error("Error in mock onAuthStateChanged listener:", e);
+      console.error("Error in onAuthStateChanged listener:", e);
     }
   });
 };
 
-const mockAuthSingleton = {
-  currentUser: mockCurrentUserInternal,
-  onAuthStateChanged: (callback: (user: MockUser | null) => void): (() => void) => {
-    mockAuthStateListeners.push(callback);
-    Promise.resolve().then(() => callback(mockCurrentUserInternal));
-    return () => {
-      const index = mockAuthStateListeners.indexOf(callback);
-      if (index > -1) mockAuthStateListeners.splice(index, 1);
-    };
-  },
-  signInWithEmailAndPassword: async (_authInstanceIgnored: any, email: string, pass: string): Promise<{ user: MockUser }> => {
-    const storedUserEntry = mockUserStore[email];
-    if (storedUserEntry && storedUserEntry.password === pass) {
-      mockCurrentUserInternal = storedUserEntry.profile;
-      notifyMockAuthStateChanged();
-      return { user: mockCurrentUserInternal };
-    }
-    throw Object.assign(new Error("Mock Auth: Invalid credentials."), { code: "auth/invalid-credential" });
-  },
-  createUserWithEmailAndPassword: async (_authInstanceIgnored: any, email: string, pass: string): Promise<{ user: MockUser }> => {
-    if (mockUserStore[email]) {
-      throw Object.assign(new Error("Mock Auth: Email already in use."), { code: "auth/email-already-in-use" });
-    }
-    const uid = `mock-uid-${Date.now()}`;
-    const newUser: MockUser = {
-      uid, email, displayName: null, photoURL: null, emailVerified: false,
-      getIdToken: async () => `mock-id-token-${uid}`,
-      delete: async () => { 
-        console.log(`[MockAuth] Deleting user: ${email}`);
-        delete mockUserStore[email];
-        if (mockCurrentUserInternal?.email === email) {
-          mockCurrentUserInternal = null;
+// Listen to storage changes to sync auth state across tabs
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (event.key === WAKESYNC_TOKEN_KEY || event.key === WAKESYNC_USER_KEY) {
+      const token = localStorage.getItem(WAKESYNC_TOKEN_KEY);
+      const userJson = localStorage.getItem(WAKESYNC_USER_KEY);
+      if (token && userJson) {
+        try {
+          currentUserInternal = JSON.parse(userJson);
+        } catch (e) {
+          currentUserInternal = null;
         }
-        notifyMockAuthStateChanged();
+      } else {
+        currentUserInternal = null;
       }
-    };
-    mockUserStore[email] = { password: pass, profile: newUser };
-    mockCurrentUserInternal = newUser;
-    notifyMockAuthStateChanged();
-    return { user: mockCurrentUserInternal };
-  },
-  sendPasswordResetEmail: async (_authInstanceIgnored: any, email: string): Promise<void> => {
-    console.log(`[MockAuth] Password reset email would be sent to ${email}.`);
-    return Promise.resolve();
-  },
-  signOut: async (_authInstanceIgnored: any): Promise<void> => {
-    mockCurrentUserInternal = null;
-    notifyMockAuthStateChanged();
-    return Promise.resolve();
-  },
-  updateProfile: async (user: MockUser, profileUpdates: { displayName?: string | null; photoURL?: string | null }): Promise<void> => {
-    if (!mockCurrentUserInternal || mockCurrentUserInternal.uid !== user.uid || !user.email) {
-      throw Object.assign(new Error("Mock Auth: User not found or mismatch."), { code: "auth/user-mismatch" });
+      notifyAuthStateChanged();
     }
-    const userInStore = mockUserStore[user.email];
-    if (userInStore) {
-      if (profileUpdates.displayName !== undefined) userInStore.profile.displayName = profileUpdates.displayName;
-      if (profileUpdates.photoURL !== undefined) userInStore.profile.photoURL = profileUpdates.photoURL;
-      if (mockCurrentUserInternal.uid === userInStore.profile.uid) { // Update current user if it's the one being modified
-        mockCurrentUserInternal = { ...mockCurrentUserInternal, ...profileUpdates };
-      }
-      notifyMockAuthStateChanged();
-    }
-    return Promise.resolve();
-  },
-  reauthenticateWithCredential: async (user: MockUser, credential: any): Promise<{user: MockUser}> => {
-    if (!mockCurrentUserInternal || mockCurrentUserInternal.uid !== user.uid || !user.email) {
-      throw Object.assign(new Error("Mock Auth: User mismatch for reauth."), { code: "auth/user-mismatch" });
-    }
-    const storedUserEntry = mockUserStore[user.email];
-    if (storedUserEntry && credential?.type === "password" && credential.password === storedUserEntry.password) {
-      return Promise.resolve({ user: mockCurrentUserInternal });
-    }
-    throw Object.assign(new Error("Mock Auth: Incorrect password for reauth."), { code: "auth/wrong-password" });
-  },
-  updatePassword: async (user: MockUser, newPassword?: string | null): Promise<void> => {
-    if (!mockCurrentUserInternal || mockCurrentUserInternal.uid !== user.uid || !user.email) {
-      throw Object.assign(new Error("Mock Auth: User not found or mismatch for password update."), { code: "auth/user-mismatch" });
-    }
-    if (!newPassword || newPassword.length < 6) {
-      throw Object.assign(new Error("Mock Auth: Password should be at least 6 characters."), { code: "auth/weak-password" });
-    }
-    const userInStore = mockUserStore[user.email];
-    if (userInStore) userInStore.password = newPassword;
-    return Promise.resolve();
-  },
-  EmailAuthProvider: {
-    credential: (email: string, pass: string) => ({ type: "password", providerId: "password", email, password: pass, signInMethod: "password" })
-  }
-};
-
-const mockFirestoreStore: Record<string, any> = {};
-const mockDbSingleton = {
-  collection: (collectionPath: string) => ({
-    doc: (documentPath?: string) => {
-      const fullPath = documentPath ? `${collectionPath}/${documentPath}` : `${collectionPath}/mock-doc-${Date.now()}`;
-      return {
-        get: async () => {
-          const data = mockFirestoreStore[fullPath];
-          const processedData = data ? JSON.parse(JSON.stringify(data), (key, value) => 
-            (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/.test(value)) ? { toDate: () => new Date(value) } : value
-          ) : undefined;
-          return Promise.resolve({ exists: () => !!processedData, data: () => processedData, id: fullPath.split('/').pop() });
-        },
-        set: async (data: any, options?: { merge?: boolean }) => {
-          const dataToStore = JSON.parse(JSON.stringify(data));
-          Object.keys(dataToStore).forEach(key => {
-            if (dataToStore[key]?._seconds !== undefined) dataToStore[key] = new Date().toISOString();
-          });
-          mockFirestoreStore[fullPath] = options?.merge ? { ...(mockFirestoreStore[fullPath] || {}), ...dataToStore } : dataToStore;
-          return Promise.resolve();
-        },
-        update: async (data: any) => {
-          if (!mockFirestoreStore[fullPath]) throw new Error(`MockFirestore: No doc at ${fullPath}`);
-          const dataToUpdate = JSON.parse(JSON.stringify(data));
-          Object.keys(dataToUpdate).forEach(key => {
-            if (dataToUpdate[key]?._seconds !== undefined) dataToUpdate[key] = new Date().toISOString();
-          });
-          mockFirestoreStore[fullPath] = { ...mockFirestoreStore[fullPath], ...dataToUpdate };
-          return Promise.resolve();
-        },
-        delete: async () => { delete mockFirestoreStore[fullPath]; return Promise.resolve(); },
-        onSnapshot: (observer: { next?: (snapshot: any) => void; error?: (error: Error) => void; }) => {
-          const data = mockFirestoreStore[fullPath];
-          const processedData = data ? JSON.parse(JSON.stringify(data), (key, value) => 
-            (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/.test(value)) ? { toDate: () => new Date(value) } : value
-          ) : undefined;
-          const mockSnapshot = { exists: () => !!processedData, data: () => processedData, id: fullPath.split('/').pop() };
-          if (observer.next) setTimeout(() => observer.next!(mockSnapshot), 0);
-          return () => {};
-        }
-      };
-    },
-    add: async (data: any) => {
-      const newId = `mock-doc-${Date.now()}`;
-      const fullPath = `${collectionPath}/${newId}`;
-      const dataToStore = JSON.parse(JSON.stringify(data));
-      Object.keys(dataToStore).forEach(key => {
-        if (dataToStore[key]?._seconds !== undefined) dataToStore[key] = new Date().toISOString();
-      });
-      mockFirestoreStore[fullPath] = dataToStore;
-      return Promise.resolve({ id: newId, path: fullPath });
-    },
-    where: (fieldPath: string, opStr: string, value: any) => ({
-      onSnapshot: (observer: any) => {
-        const results = Object.entries(mockFirestoreStore)
-          .filter(([key, docData]) => key.startsWith(collectionPath + '/') && docData[fieldPath] === value)
-          .map(([key, docData]) => ({ id: key.split('/').pop(), data: () => docData, exists: () => true }));
-        if(observer.next) setTimeout(() => observer.next({ docs: results, empty: results.length === 0, size: results.length }), 0);
-        return () => {};
-      },
-      get: async () => {
-        const results = Object.entries(mockFirestoreStore)
-          .filter(([key, docData]) => key.startsWith(collectionPath + '/') && docData[fieldPath] === value)
-          .map(([key, docData]) => ({ id: key.split('/').pop(), data: () => docData, exists: () => true }));
-        return Promise.resolve({ docs: results, empty: results.length === 0, size: results.length });
-      }
-    }),
-    get: async () => {
-      const results = Object.entries(mockFirestoreStore)
-        .filter(([key]) => key.startsWith(collectionPath + '/'))
-        .map(([key, docData]) => {
-          const processedData = JSON.parse(JSON.stringify(docData), (_k, val) => 
-            (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/.test(val)) ? { toDate: () => new Date(val) } : val
-          );
-          return { id: key.split('/').pop(), data: () => processedData, exists: () => true };
-        });
-      return Promise.resolve({ docs: results, empty: results.length === 0, size: results.length });
-    }
-  }),
-  serverTimestamp: () => ({ _seconds: Math.floor(Date.now() / 1000), _nanoseconds: (Date.now() % 1000) * 1000000, toDate: () => new Date() }),
-  Timestamp: {
-    fromDate: (date: Date) => ({ seconds: Math.floor(date.getTime() / 1000), nanoseconds: (date.getTime() % 1000) * 1000000, toDate: () => date }),
-    now: () => { const now = new Date(); return { seconds: Math.floor(now.getTime() / 1000), nanoseconds: (now.getTime() % 1000) * 1000000, toDate: () => now }; }
-  }
-};
-
-const mockStorageStore: Record<string, { blob: Blob, metadata: any, downloadURL: string }> = {};
-const mockStorageSingleton = {
-  ref: (path?: string) => ({
-    put: async (data: Blob | Uint8Array | ArrayBuffer, metadata?: any) => {
-      const storagePath = path || `mock-file-${Date.now()}`;
-      const blob = data instanceof Blob ? data : new Blob([data]);
-      const downloadURL = URL.createObjectURL(blob);
-      mockStorageStore[storagePath] = { blob, metadata, downloadURL };
-      return Promise.resolve({ ref: mockStorageSingleton.ref(storagePath), metadata: metadata || { name: storagePath.split('/').pop() }, totalBytes: blob.size });
-    },
-    getDownloadURL: async () => {
-      const storagePath = path || "";
-      if (mockStorageStore[storagePath]) return Promise.resolve(mockStorageStore[storagePath].downloadURL);
-      throw new Error(`MockStorage: File not found at ${storagePath}`);
-    },
-    delete: async () => {
-      const storagePath = path || "";
-      if (mockStorageStore[storagePath]) {
-        URL.revokeObjectURL(mockStorageStore[storagePath].downloadURL);
-        delete mockStorageStore[storagePath];
-      }
-      return Promise.resolve();
-    },
-    toString: () => `gs://mock-bucket/${path}`
-  }),
-};
-
-// --- Conditional Export Logic ---
-const explicitMockModeEnv = process.env.NEXT_PUBLIC_USE_MOCK_MODE;
-let autoDetectedMockMode: boolean;
-
-const firebaseApiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
-const isApiKeyPlaceholder = (key?: string) => !key || key.includes("YOUR_") || key.includes("PLACEHOLDER") || key.includes("MOCK_") || key.length < 10;
-
-if (isApiKeyPlaceholder(firebaseApiKey)) {
-  autoDetectedMockMode = true;  // API key is missing or a placeholder, assume mock mode
-} else {
-  autoDetectedMockMode = false; // Valid API key found, assume real mode
+  });
 }
 
-const USE_MOCK_MODE =
+
+export const auth = {
+  currentUser: currentUserInternal, // Keep this updated
+  onAuthStateChanged: (callback: (user: User | null) => void): (() => void) => {
+    authStateListeners.push(callback);
+    // Call immediately with current state
+    Promise.resolve().then(() => callback(currentUserInternal));
+    return () => { // Unsubscribe function
+      const index = authStateListeners.indexOf(callback);
+      if (index > -1) authStateListeners.splice(index, 1);
+    };
+  },
+  signInWithEmailAndPassword: async (_authIgnored: any, email: string, pass: string): Promise<{ user: User, token?: string }> => {
+    try {
+      const response = await apiClient<{ user: User; token: string }>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password: pass }),
+      });
+      if (response.token && response.user) {
+        localStorage.setItem(WAKESYNC_TOKEN_KEY, response.token);
+        localStorage.setItem(WAKESYNC_USER_KEY, JSON.stringify(response.user));
+        currentUserInternal = response.user;
+        notifyAuthStateChanged();
+        return { user: response.user, token: response.token };
+      }
+      throw new Error("Login failed: No token or user data received from backend.");
+    } catch (error) {
+      console.error("signInWithEmailAndPassword error:", error);
+      throw error; // Re-throw to be caught by UI
+    }
+  },
+  createUserWithEmailAndPassword: async (_authIgnored: any, email: string, pass: string, name?: string): Promise<{ user: User, token?: string }> => {
+    try {
+      const response = await apiClient<{ user: User; token: string }>('/auth/signup', {
+        method: 'POST',
+        body: JSON.stringify({ email, password: pass, name }),
+      });
+      if (response.token && response.user) {
+        localStorage.setItem(WAKESYNC_TOKEN_KEY, response.token);
+        localStorage.setItem(WAKESYNC_USER_KEY, JSON.stringify(response.user));
+        currentUserInternal = response.user;
+        notifyAuthStateChanged();
+        return { user: response.user, token: response.token };
+      }
+      throw new Error("Signup failed: No token or user data received from backend.");
+    } catch (error) {
+      console.error("createUserWithEmailAndPassword error:", error);
+      throw error;
+    }
+  },
+  sendPasswordResetEmail: async (_authIgnored: any, email: string): Promise<void> => {
+    // This would typically call a backend endpoint. For local, it's a placeholder.
+    console.log(`[LocalAuth] Password reset email would be sent to ${email} (via backend).`);
+    // Example: await apiClient('/auth/request-password-reset', { method: 'POST', body: JSON.stringify({ email }) });
+    return Promise.resolve(); // Simulate success
+  },
+  signOut: async (_authIgnored: any): Promise<void> => {
+    localStorage.removeItem(WAKESYNC_TOKEN_KEY);
+    localStorage.removeItem(WAKESYNC_USER_KEY);
+    currentUserInternal = null;
+    notifyAuthStateChanged();
+    // Optionally call a backend logout endpoint if it invalidates tokens server-side
+    // await apiClient('/auth/logout', { method: 'POST' });
+    return Promise.resolve();
+  },
+  updateProfile: async (user: User, profileUpdates: { displayName?: string | null; photoURL?: string | null }): Promise<void> => {
+    // This would call a backend endpoint to update user profile.
+    // For now, we'll update localStorage and notify listeners.
+    if (currentUserInternal && currentUserInternal.uid === user.uid) {
+      const updatedUser = { ...currentUserInternal, ...profileUpdates };
+      localStorage.setItem(WAKESYNC_USER_KEY, JSON.stringify(updatedUser));
+      currentUserInternal = updatedUser;
+      notifyAuthStateChanged();
+      console.log("[LocalAuth] Profile updated in localStorage (backend update needed for persistence).");
+      // Example: await apiClient(`/users/${user.uid}/profile`, { method: 'PUT', body: JSON.stringify(profileUpdates) });
+    }
+    return Promise.resolve();
+  },
+  reauthenticateWithCredential: async (_user: User, _credential: any): Promise<{user: User}> => {
+    // This is complex to mock locally without a backend flow for reauth.
+    // For now, assume success if called or simulate a specific behavior.
+    console.warn("[LocalAuth] reauthenticateWithCredential called - assuming success for local demo.");
+    if (!currentUserInternal) throw new Error("No user to reauthenticate");
+    return Promise.resolve({ user: currentUserInternal });
+  },
+  updatePassword: async (_user: User, _newPassword?: string | null): Promise<void> => {
+    // This would call a backend endpoint.
+    console.warn("[LocalAuth] updatePassword called (backend update needed for actual change).");
+    // Example: await apiClient(`/users/${user.uid}/password`, { method: 'PUT', body: JSON.stringify({ currentPassword: '...', newPassword }) });
+    return Promise.resolve();
+  },
+  // No direct EmailAuthProvider.credential replacement needed if backend handles reauth logic
+  // We just need to send current and new password to a backend endpoint.
+};
+
+// --- Mock Firestore/Storage (Simplified for Local Backend Focus) ---
+// Since we are moving to a local backend for data, these direct db/storage
+// interactions from the frontend are no longer the primary data source.
+// They are kept minimal or could be fully removed if all data flows through apiClient.
+
+export const db = {
+  collection: (collectionPath: string) => ({
+    doc: (documentPath?: string) => ({
+      get: async () => {
+        console.warn(`[LocalDB-Mock] Attempted to GET doc: ${collectionPath}/${documentPath}. Data should come from local backend via apiClient.`);
+        return Promise.resolve({ exists: () => false, data: () => undefined, id: documentPath });
+      },
+      set: async (_data: any, _options?: { merge?: boolean }) => {
+        console.warn(`[LocalDB-Mock] Attempted to SET doc: ${collectionPath}/${documentPath}. Data should be saved via local backend.`);
+        return Promise.resolve();
+      },
+      // Add other Firestore methods as needed, all pointing to console warnings.
+    }),
+    // Add other collection methods similarly.
+  }),
+};
+
+export const storage = {
+  ref: (path?: string) => ({
+    put: async (_data: Blob | Uint8Array | ArrayBuffer, _metadata?: any) => {
+      console.warn(`[LocalStorage-Mock] Attempted to UPLOAD file: ${path}. File handling should be via local backend.`);
+      return Promise.resolve({ ref: { getDownloadURL: async () => "mock-url" }, metadata: {}, totalBytes: 0 });
+    },
+    getDownloadURL: async () => {
+      console.warn(`[LocalStorage-Mock] Attempted to GET DOWNLOAD URL for: ${path}. File handling should be via local backend.`);
+      return Promise.resolve("mock-url");
+    },
+    // Add other storage methods.
+  }),
+  uploadBytes: async (_ref: any, _data: any, _metadata?: any) => {
+    console.warn(`[LocalStorage-Mock] storage.uploadBytes called. File handling via local backend.`);
+    return { ref: { getDownloadURL: async () => "mock-url" } } as any;
+  },
+  getDownloadURL: async (_ref: any) => {
+     console.warn(`[LocalStorage-Mock] storage.getDownloadURL called. File handling via local backend.`);
+    return "mock-url";
+  },
+  deleteObject: async (_ref: any) => {
+    console.warn(`[LocalStorage-Mock] storage.deleteObject called. File handling via local backend.`);
+    return Promise.resolve();
+  }
+};
+
+// Dummy Timestamp/serverTimestamp for type compatibility if still imported elsewhere.
+// These should ideally not be used directly in frontend if backend handles timestamps.
+export const Timestamp = {
+  fromDate: (date: Date) => date, // Or return a specific object if your code expects it
+  now: () => new Date(),
+};
+export const serverTimestamp = () => new Date(); // Or a specific marker understood by backend
+
+// No Firebase App initialization needed for this local-backend-centric approach.
+export const app = { name: "[Local App Stub]" };
+
+
+// Helper for checking if a Firebase API key looks like a placeholder
+const isApiKeyPlaceholder = (key?: string) => !key || key.includes("YOUR_") || key.includes("PLACEHOLDER") || key.includes("MOCK_") || key.length < 10;
+
+// Auto-detect mock mode based on Firebase keys in .env
+// This variable controls console messages, not the core logic which now always hits local backend.
+const explicitMockModeEnv = process.env.NEXT_PUBLIC_USE_MOCK_MODE;
+const firebaseApiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
+const autoDetectedMockMode = isApiKeyPlaceholder(firebaseApiKey);
+
+const CURRENTLY_IN_MOCK_DEBUG_MODE =
   explicitMockModeEnv === 'true' ? true :
   explicitMockModeEnv === 'false' ? false :
   autoDetectedMockMode;
 
-if (USE_MOCK_MODE) {
+if (CURRENTLY_IN_MOCK_DEBUG_MODE) {
   if (explicitMockModeEnv === 'true') {
-    console.info("WakeSync: Using MOCK Firebase services (explicitly set by NEXT_PUBLIC_USE_MOCK_MODE=true).");
+    console.info("WakeSync Frontend: Running in LOCAL MODE (explicitly set by NEXT_PUBLIC_USE_MOCK_MODE=true). All auth/data via local backend.");
   } else {
-    console.info("WakeSync: Using MOCK Firebase services (auto-detected due to missing/placeholder Firebase API Key). For REAL Firebase, provide valid credentials in .env and ensure NEXT_PUBLIC_USE_MOCK_MODE is not 'true'.");
+    console.info("WakeSync Frontend: Running in LOCAL MODE (auto-detected due to missing/placeholder Firebase API Key). All auth/data via local backend. For REAL Firebase, provide valid credentials in .env.");
   }
 } else {
    if (explicitMockModeEnv === 'false') {
-     console.info("WakeSync: Using REAL Firebase services (explicitly set by NEXT_PUBLIC_USE_MOCK_MODE=false).");
+     console.info("WakeSync Frontend: Configured for REAL Firebase services (explicitly set by NEXT_PUBLIC_USE_MOCK_MODE=false). Ensure backend is deployed and configured accordingly if not using local backend.");
    } else {
-     console.info("WakeSync: Using REAL Firebase services (auto-detected based on valid Firebase API Key). To force MOCK mode, set NEXT_PUBLIC_USE_MOCK_MODE=true in .env.");
+     console.info("WakeSync Frontend: Configured for REAL Firebase services (auto-detected based on valid Firebase API Key). Ensure backend is deployed if not using local backend. To force LOCAL MODE, set NEXT_PUBLIC_USE_MOCK_MODE=true in .env.");
    }
 }
-
-
-let app: FirebaseApp;
-let auth: Auth | typeof mockAuthSingleton;
-let db: Firestore | typeof mockDbSingleton;
-let storage: FirebaseStorage | typeof mockStorageSingleton;
-let Timestamp: typeof FirestoreTimestamp | typeof mockDbSingleton.Timestamp;
-let serverTimestamp: typeof firestoreServerTimestamp | typeof mockDbSingleton.serverTimestamp;
-
-if (USE_MOCK_MODE) {
-  app = { name: "[mock Firebase app]" } as FirebaseApp;
-  auth = mockAuthSingleton;
-  db = mockDbSingleton;
-  storage = mockStorageSingleton;
-  Timestamp = mockDbSingleton.Timestamp as typeof mockDbSingleton.Timestamp;
-  serverTimestamp = mockDbSingleton.serverTimestamp as typeof mockDbSingleton.serverTimestamp;
-} else {
-  if (!getApps().length) {
-    if (isApiKeyPlaceholder(firebaseConfig.apiKey)) {
-      console.error("CRITICAL: Firebase API Key is not configured correctly for REAL mode. Defaulting to MOCK services to prevent app crash. Check your .env file.");
-      auth = mockAuthSingleton;
-      db = mockDbSingleton;
-      storage = mockStorageSingleton;
-      Timestamp = mockDbSingleton.Timestamp as typeof mockDbSingleton.Timestamp;
-      serverTimestamp = mockDbSingleton.serverTimestamp as typeof mockDbSingleton.serverTimestamp;
-      app = { name: "[mock Firebase app - FALLBACK]" } as FirebaseApp;
-      if (typeof window !== 'undefined') { 
-        alert("WakeSync Firebase is not configured correctly for REAL mode. The app is running with MOCK services. Please check browser console and .env file for API key issues.");
-      }
-    } else {
-      app = initializeApp(firebaseConfig);
-      auth = getAuth(app);
-      db = getFirestore(app);
-      storage = getStorage(app);
-      Timestamp = FirestoreTimestamp;
-      serverTimestamp = firestoreServerTimestamp;
-    }
-  } else {
-    app = getApp();
-    auth = getAuth(app);
-    db = getFirestore(app);
-    storage = getStorage(app);
-    Timestamp = FirestoreTimestamp;
-    serverTimestamp = firestoreServerTimestamp;
-  }
-}
-
-type User = FirebaseUserType | MockUser;
-
-const getEmailProviderCredential = USE_MOCK_MODE 
-    ? mockAuthSingleton.EmailAuthProvider.credential 
-    : EmailAuthProvider.credential;
-
-// Real Firebase Storage specific exports if not in mock mode
-const uploadBytes = USE_MOCK_MODE ? mockStorageSingleton.ref('').put : firebaseUploadBytes; // put on mock ref is uploadBytes equivalent
-const getDownloadURL = USE_MOCK_MODE ? mockStorageSingleton.ref('').getDownloadURL : firebaseGetDownloadURL; // getDownloadURL on mock ref
-const deleteObject = USE_MOCK_MODE ? mockStorageSingleton.ref('').delete : firebaseDeleteObject; // delete on mock ref
-
-export { 
-  app, auth, db, storage, type User, Timestamp, serverTimestamp,
-  firebaseSignInWithEmailAndPassword, firebaseCreateUserWithEmailAndPassword,
-  firebaseOnAuthStateChanged, firebaseSignOut, firebaseSendPasswordResetEmail,
-  firebaseUpdateProfile, firebaseUpdatePassword, firebaseReauthenticateWithCredential,
-  getEmailProviderCredential,
-  firestoreCollection, firestoreDoc, firestoreGetDoc, firestoreSetDoc,
-  firestoreUpdateDoc, firestoreDeleteDoc, firestoreAddDoc,
-  firestoreOnSnapshot, firestoreQuery, firestoreWhere, firestoreGetDocs,
-  // Storage exports
-  storageRef, // This is the same for both, points to the correct 'ref' function
-  uploadBytes,
-  getDownloadURL,
-  deleteObject
+// The actual User type for re-export if needed elsewhere, ensuring it's the local one.
+// export type User = LocalUser;
+export const getEmailProviderCredential = (_email: string, _pass: string) => {
+  console.warn("getEmailProviderCredential called. Reauth should be handled by backend.");
+  return { type: "password", providerId: "password" }; // Placeholder
 };
-
-if (!USE_MOCK_MODE) {
-    const placeholderWarning = (key: string, value?: string) => {
-        if (isApiKeyPlaceholder(value)) {
-            console.warn(`WakeSync: Firebase config might be using a placeholder or invalid value for ${key}. Ensure .env file has valid Firebase project credentials for REAL mode.`);
-            return true;
-        }
-        return false;
-    }
-    placeholderWarning("NEXT_PUBLIC_FIREBASE_API_KEY", process.env.NEXT_PUBLIC_FIREBASE_API_KEY);
-    placeholderWarning("NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN", process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN);
-    placeholderWarning("NEXT_PUBLIC_FIREBASE_PROJECT_ID", process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID);
-
-    if (isApiKeyPlaceholder(process.env.GOOGLE_API_KEY)) {
-        console.warn("WakeSync: Genkit GOOGLE_API_KEY in .env might be a placeholder. AI features may not work in REAL mode without a valid key.");
-    }
-} else { // Populate mock store with more users if needed for testing
-    if (!mockUserStore["another@example.com"]) {
-        mockUserStore["another@example.com"] = {
-            password: "password",
-            profile: {
-                uid: "mock-uid-another", email: "another@example.com", displayName: "Another User", photoURL: null, emailVerified: true,
-                getIdToken: async () => "mock-id-token-another",
-                delete: async () => { 
-                  delete mockUserStore["another@example.com"]; 
-                  if (mockCurrentUserInternal?.email === "another@example.com") mockCurrentUserInternal = null;
-                  notifyMockAuthStateChanged();
-                }
-            }
-        }
-    }
-    // Example: Auto-login demo user for easier development in mock mode
-    // if (!mockCurrentUserInternal && mockUserStore["demo@example.com"]) {
-    //     mockCurrentUserInternal = mockUserStore["demo@example.com"].profile;
-    //     console.info("[MockAuth] Auto-logged in demo@example.com for convenience.");
-    //     // notifyMockAuthStateChanged(); // This might be too early, let onAuthStateChanged handle initial call
-    // }
-}
+export const storageRef = (instance: any, path?: string) => instance.ref(path);
